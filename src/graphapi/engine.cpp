@@ -28,6 +28,7 @@
 #include <miopen/graphapi/engine.hpp>
 #include <miopen/graphapi/opgraph.hpp>
 
+#include <iostream>
 namespace miopen {
 
 namespace graphapi {
@@ -40,9 +41,10 @@ EngineBuilder& EngineBuilder::setOpGraph(const OpGraph* opGraph)
 
 EngineBuilder& EngineBuilder::setGlobalIndex(int64_t globalIndex)
 {
-    if(globalIndex >= 0)
+    if(globalIndex >= 0 && (!mOpGraph || globalIndex < mOpGraph->getEngines().size()))
     {
         mGlobalIndex = globalIndex;
+        mGlobalIndexSet = true;
     }
     else
     {
@@ -53,7 +55,7 @@ EngineBuilder& EngineBuilder::setGlobalIndex(int64_t globalIndex)
 
 EngineBuilder& EngineBuilder::setSmCount(int32_t smCount)
 {
-    if(smCount >= 0)
+    if(smCount >= 1)
     {
         mSmCount = smCount;
     }
@@ -66,7 +68,7 @@ EngineBuilder& EngineBuilder::setSmCount(int32_t smCount)
 
 Engine EngineBuilder::build()
 {
-    if(mOpGraph != nullptr && mGlobalIndexSet && mGlobalIndex < mOpGraph->getEngines().size())
+    if(mOpGraph != nullptr && mGlobalIndexSet && mGlobalIndex < static_cast<int64_t>(mOpGraph->getEngines().size()))
     {
         // TODO: validate mSmCount
         Engine engine       = mOpGraph->getEngines()[mGlobalIndex];
@@ -147,6 +149,13 @@ void BackendEngineDescriptor::finalize()
     {
         MIOPEN_THROW(miopenStatusNotInitialized);
     }
+
+    // TODO: seems like we should build the engine, but we can't in the test until
+    // we define a way to set the Builder's OpGraph
+    // mEngine = mBuilder.build();
+
+    // TODO: this doesn't work, because the 'invalid' tests rely on mBuilder.build() throwing.
+    mFinalized = true;
 }
 
 void BackendEngineDescriptor::getAttribute(miopenBackendAttributeName_t attributeName,

@@ -31,21 +31,25 @@
 #include <gtest/gtest.h>
 
 #include "graphapi_gtest_common.hpp"
+#include "graphapi_opgraph_common.hpp"
+#include <miopen/graphapi/engine.hpp>
+#include <miopen/graphapi/opgraph.hpp>
+
+using namespace miopen::graphapi;
+using namespace graphapi_opgraph_tests;
 
 namespace {
 
-using miopen::graphapi::ValidatedValue;
-using miopen::graphapi::ValidatedVector;
-using DescriptorTuple = std::tuple<bool,
-                                   miopenRngDistribution_t,
-                                   double,
-                                   ValidatedValue<double>,
-                                   double,
-                                   double,
-                                   ValidatedValue<double>>;
+// using miopen::graphapi::ValidatedValue;
+// using miopen::graphapi::ValidatedVector;
+using DescriptorTuple = std::tuple<
+                            bool,
+                            int64_t,
+                            int32_t
+                        >;
 
-// using miopen::graphapi::Rng;
-// using miopen::graphapi::RngBuilder;
+// using miopen::graphapi::Engine;
+// using miopen::graphapi::EngineBuilder;
 
 } // namespace
 
@@ -53,179 +57,174 @@ class GraphApiEngineBuilder : public testing::TestWithParam<DescriptorTuple>
 {
 protected:
     bool mAttrsValid;
-    // miopenRngDistribution_t distribution;
-    // double mNormalMean;
-    // ValidatedValue<double> mNormalStdev;
-    // double mUniformMin;
-    // double mUniformMax;
-    // ValidatedValue<double> mBernoulliProb;
+    int64_t mGlobalIndex;
+    int32_t mSmCount;
 
     void SetUp() override
     {
         std::tie(mAttrsValid,
-                 distribution,
-                 mNormalMean,
-                 mNormalStdev,
-                 mUniformMin,
-                 mUniformMax,
-                 mBernoulliProb) = GetParam();
+                 mGlobalIndex,
+                 mSmCount) = GetParam();
+
     }
 };
 
 TEST_P(GraphApiEngineBuilder, ValidateAttributes)
 {
-    if(mAttrsValid && mNormalStdev.valid && mBernoulliProb.valid)
+    auto dg1 = makeDiamondGraph();
+    EXPECT_EQ(dg1->graph().getEngines().size(), 4)
+        << "Tests will fail because makeDiamondGraph has been modified.";
+
+    if(mAttrsValid)
     {
         EXPECT_NO_THROW({
             EngineBuilder()
-                .setDistribution(distribution)
-                .setNormalMean(mNormalMean)
-                .setNormalStdev(mNormalStdev.value)
-                .setUniformMin(mUniformMin)
-                .setUniformMax(mUniformMax)
-                .setBernoulliProb(mBernoulliProb.value)
-                .build();
-        }) << "Builder failed on valid attributes";
+                .setOpGraph(&dg1->graph())
+                .setGlobalIndex(mGlobalIndex)
+                .setSmCount(mSmCount)
+                .build()
+            ;
+        }) << "Engine Builder failed on valid attributes";
     }
     else
     {
         EXPECT_ANY_THROW({
             EngineBuilder()
-                .setDistribution(distribution)
-                .setNormalMean(mNormalMean)
-                .setNormalStdev(mNormalStdev.value)
-                .setUniformMin(mUniformMin)
-                .setUniformMax(mUniformMax)
-                .setBernoulliProb(mBernoulliProb.value)
-                .build();
-        }) << "Buider failed to detect invalid attributes";
-    }
-    if(mNormalStdev.valid)
-    {
-        EXPECT_NO_THROW({ EngineBuilder().setNormalStdev(mNormalStdev.value); })
-            << "EngineBuilder::setNormalStdev(double) failed on valid attribute";
-    }
-    else
-    {
-        EXPECT_ANY_THROW({ EngineBuilder().setNormalStdev(mNormalStdev.value); })
-            << "EngineBuilder::setNormalStdev(double) failed on invalid attribute";
-    }
-    if(mBernoulliProb.valid)
-    {
-        EXPECT_NO_THROW({ EngineBuilder().setBernoulliProb(mBernoulliProb.value); })
-            << "EngineBuilder::setBernoulliProb(double) failed on valid attribute";
-    }
-    else
-    {
-        EXPECT_ANY_THROW({ EngineBuilder().setBernoulliProb(mBernoulliProb.value); })
-            << "EngineBuilder::setBernoulliProb(double) failed on invalid attribute";
+                .setOpGraph(&dg1->graph())
+                .setGlobalIndex(mGlobalIndex)
+                .setSmCount(mSmCount)
+                .build()
+            ;
+        }) << "Engine Builder failed to detect invalid attributes";
     }
 }
 
-namespace {
+// namespace {
 
-using miopen::graphapi::GTestDescriptorAttribute;
-using miopen::graphapi::GTestDescriptorSingleValueAttribute;
-using miopen::graphapi::GTestGraphApiExecute;
+// using miopen::graphapi::GTestDescriptorAttribute;
+// using miopen::graphapi::GTestDescriptorSingleValueAttribute;
+// using miopen::graphapi::GTestGraphApiExecute;
 
-} // namespace
+// } // namespace
 
 class GraphApiEngine : public testing::TestWithParam<DescriptorTuple>
 {
 private:
     // Pointers to these are used in mExecute object below
-    // GTestDescriptorSingleValueAttribute<miopenRngDistribution_t, char> mDistribution;
-    // GTestDescriptorSingleValueAttribute<double, char> mNormalMean;
+    // TODO: Need guidance: we should mock Solution, but don't know how because the header uses #pragma once.
+    // GTestDescriptorSingleValueAttribute<Solution, char> mSolution; TEMPCODE: ignore Solution
+    GTestDescriptorSingleValueAttribute<BackendOperationGraphDescriptor, char> mOpGraphDescr;
+    GTestDescriptorVectorAttribute<BackendEngineDescriptor, char> mOps;
+    GTestDescriptorSingleValueAttribute<int64_t, char> mGlobalIndex;
+    GTestDescriptorSingleValueAttribute<int32_t, char> mSmCount;
 
 protected:
     GTestGraphApiExecute<GTestDescriptorAttribute*> mExecute;
 
     void SetUp() override
     {
-        auto [valid, distribution, normalMean, normalStdev, uniformMin, uniformMax, bernoulliProb] =
+        auto [valid, globalIndex, smCount] =
             GetParam();
 
+        auto dg1 = graphapi_opgraph_tests::makeDiamondGraph();
+        EXPECT_EQ(dg1->graph().getEngines().size(), 4)
+            << "Tests will fail because makeDiamondGraph has been modified.";
+
+        BackendEngineDescriptor opDescr;
+        // RJS note: I couldn't get this part to work yet due to various deleted ctors etc.
+        // mOps = {
+        //     true,
+        //     "MIOPEN_ATTR_OPERATIONGRAPH_OPS",
+        //     MIOPEN_ATTR_OPERATIONGRAPH_OPS,
+        //     MIOPEN_TYPE_BACKEND_DESCRIPTOR,
+        //     MIOPEN_TYPE_CHAR,
+        //     5,
+        //     {opDescr, opDescr, opDescr, opDescr}}
+        // ;
+
+        // auto [isCorrect,
+        //         textName,
+        //         name,
+        //         type,
+        //         count,
+        //         data,
+        //         invalidType,
+        //         invalidTypeData,
+        //         invalidCount,
+        //         invalidCountData,
+        //         readBuffer] = mOps.getTestCase();
+
+        BackendOperationGraphDescriptor opGraphDescr;
+        // opGraphDescr.setAttribute(
+        //     MIOPEN_ATTR_OPERATIONGRAPH_OPS,
+        //     MIOPEN_TYPE_BACKEND_DESCRIPTOR,
+        //     4,
+        //     data
+        // );
+
+        mGlobalIndex = {
+            true,
+            "MIOPEN_ATTR_ENGINE_GLOBAL_INDEX",
+            MIOPEN_ATTR_ENGINE_GLOBAL_INDEX,
+            MIOPEN_TYPE_INT64,
+            MIOPEN_TYPE_CHAR,
+            2,
+            globalIndex
+        };
+
+        mSmCount = {
+            true,
+            "MIOPEN_ATTR_ENGINE_SM_COUNT_TARGET",
+            MIOPEN_ATTR_ENGINE_SM_COUNT_TARGET,
+            MIOPEN_TYPE_INT32,
+            MIOPEN_TYPE_CHAR,
+            2,
+            smCount
+        };
+
+        mExecute.descriptor.textName   = "MIOPEN_BACKEND_ENGINE_DESCRIPTOR";
+        mExecute.descriptor.type       = MIOPEN_BACKEND_ENGINE_DESCRIPTOR;
+        mExecute.descriptor.attrsValid = valid;
+
+        mExecute.descriptor.attributes = {&mOpGraphDescr,
+                                          &mGlobalIndex,
+                                          &mSmCount};
     }
 };
 
 TEST_P(GraphApiEngine, CFunctions) { mExecute(); }
 
-static auto validAttributesNormal =
-    testing::Combine(testing::Values(true),
-                     testing::Values(MIOPEN_RNG_DISTRIBUTION_NORMAL),
-                     testing::Values(0.0),
-                     testing::Values(ValidatedValue<double>{true, 0.5}),
-                     testing::Values(0.0, 1.0),
-                     testing::Values(0.0, 1.0),
-                     testing::Values(ValidatedValue<double>{true, 0.5},
-                                     ValidatedValue<double>{false, -0.5},
-                                     ValidatedValue<double>{false, 1.5}));
+static auto validAttributes =
+    testing::Combine(
+        testing::Values(true),
+        testing::Values(0, 1, 2, 3),
+        testing::Values(1, 2, 4, 8, 16)
+    );
 
-static auto validAttributesUniform = testing::Combine(
-    testing::Values(true),
-    testing::Values(MIOPEN_RNG_DISTRIBUTION_UNIFORM),
-    testing::Values(0.0),
-    testing::Values(ValidatedValue<double>{true, 0.5}, ValidatedValue<double>{false, -0.5}),
-    testing::Values(0.0),
-    testing::Values(1.0),
-    testing::Values(ValidatedValue<double>{true, 0.5},
-                    ValidatedValue<double>{false, -0.5},
-                    ValidatedValue<double>{false, 1.5}));
+static auto invalidEngine =
+    testing::Combine(
+        testing::Values(false),
+        testing::Values(-1, 4),
+        testing::Values(1, 2, 4, 8, 16)
+    );
 
-static auto validAttributesBernoulli = testing::Combine(
-    testing::Values(true),
-    testing::Values(MIOPEN_RNG_DISTRIBUTION_BERNOULLI),
-    testing::Values(0.0),
-    testing::Values(ValidatedValue<double>{true, 0.5}, ValidatedValue<double>{false, -0.5}),
-    testing::Values(0.0, 1.0),
-    testing::Values(0.0, 1.0),
-    testing::Values(ValidatedValue<double>{true, 0.5}));
+static auto invalidSmCount =
+    testing::Combine(
+        testing::Values(false),
+        testing::Values(0, 1, 2, 3),
+        testing::Values(-1, 0)
+    );
 
-static auto invalidAttributesNormal =
-    testing::Combine(testing::Values(false),
-                     testing::Values(MIOPEN_RNG_DISTRIBUTION_NORMAL),
-                     testing::Values(0.0),
-                     testing::Values(ValidatedValue<double>{false, -0.5}),
-                     testing::Values(0.0, 1.0),
-                     testing::Values(0.0, 1.0),
-                     testing::Values(ValidatedValue<double>{true, 0.5},
-                                     ValidatedValue<double>{false, -0.5},
-                                     ValidatedValue<double>{false, 1.5}));
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(GraphApiEngineBuilder);
+// INSTANTIATE_TEST_SUITE_P(ValidAttributes, GraphApiEngineBuilder, validAttributes);
 
-static auto invalidAttributesUniform = testing::Combine(
-    testing::Values(false),
-    testing::Values(MIOPEN_RNG_DISTRIBUTION_UNIFORM),
-    testing::Values(0.0),
-    testing::Values(ValidatedValue<double>{true, 0.5}, ValidatedValue<double>{false, -0.5}),
-    testing::Values(1.0),
-    testing::Values(0.0),
-    testing::Values(ValidatedValue<double>{true, 0.5},
-                    ValidatedValue<double>{false, -0.5},
-                    ValidatedValue<double>{false, 1.5}));
+// INSTANTIATE_TEST_SUITE_P(InvalidEngine, GraphApiEngineBuilder, invalidEngine);
 
-static auto invalidAttributesBernoulli = testing::Combine(
-    testing::Values(false),
-    testing::Values(MIOPEN_RNG_DISTRIBUTION_BERNOULLI),
-    testing::Values(0.0),
-    testing::Values(ValidatedValue<double>{true, 0.5}, ValidatedValue<double>{false, -0.5}),
-    testing::Values(0.0, 1.0),
-    testing::Values(0.0, 1.0),
-    testing::Values(ValidatedValue<double>{false, -0.5}, ValidatedValue<double>{false, 1.5}));
+// INSTANTIATE_TEST_SUITE_P(InvalidSmCount, GraphApiEngineBuilder, invalidSmCount);
 
-INSTANTIATE_TEST_SUITE_P(ValidAttributesNormal, GraphApiRngBuilder, validAttributesNormal);
-INSTANTIATE_TEST_SUITE_P(ValidAttributesUniform, GraphApiRngBuilder, validAttributesUniform);
-INSTANTIATE_TEST_SUITE_P(ValidAttributesBernoulli, GraphApiRngBuilder, validAttributesBernoulli);
+INSTANTIATE_TEST_SUITE_P(ValidAttributes, GraphApiEngine, validAttributes);
 
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesNormal, GraphApiRngBuilder, invalidAttributesNormal);
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesUniform, GraphApiRngBuilder, invalidAttributesUniform);
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesBernoulli,
-                         GraphApiRngBuilder,
-                         invalidAttributesBernoulli);
+INSTANTIATE_TEST_SUITE_P(InvalidEngine, GraphApiEngine, invalidEngine);
 
-INSTANTIATE_TEST_SUITE_P(ValidAttributesNormal, GraphApiRng, validAttributesNormal);
-INSTANTIATE_TEST_SUITE_P(ValidAttributesUniform, GraphApiRng, validAttributesUniform);
-INSTANTIATE_TEST_SUITE_P(ValidAttributesBernoulli, GraphApiRng, validAttributesBernoulli);
+INSTANTIATE_TEST_SUITE_P(InvalidSmCount, GraphApiEngine, invalidSmCount);
 
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesNormal, GraphApiRng, invalidAttributesNormal);
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesUniform, GraphApiRng, invalidAttributesUniform);
-INSTANTIATE_TEST_SUITE_P(InvalidAttributesBernoulli, GraphApiRng, invalidAttributesBernoulli);

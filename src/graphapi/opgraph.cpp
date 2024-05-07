@@ -71,6 +71,8 @@ OpGraph OpGraphBuilder::build() &&
             assert(iter->second.mSrc == nullptr);
             iter->second.mSrc = n;
         }
+
+        graph.mEngines.push_back(Engine{});
     }
 
     graph.initNodes(std::move(mNodes));

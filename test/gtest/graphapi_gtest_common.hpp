@@ -27,6 +27,7 @@
 
 #include <miopen/graphapi/tensor.hpp>
 #include <miopen/miopen.h>
+#include "graphapi_opgraph_common.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -274,12 +275,13 @@ struct GTestGraphApiExecute
             EXPECT_NE(status, miopenStatusSuccess) << textName << " was set with null array of elements";
 
             status = miopenBackendSetAttribute(descr, name, type, count, data);
+
             if(isCorrect) EXPECT_EQ(status, miopenStatusSuccess) << textName << " wasn't set";
             else EXPECT_NE(status, miopenStatusSuccess) << textName << " was set to invalid value";
             // clang-format on
         }
 
-        // Get attibute before finalizing (not a one should succeed)
+        // Get attribute before finalizing (not a one should succeed)
         bool anyAttributeGot = false;
         for(auto& attrPtr : attributes)
         {
@@ -310,6 +312,17 @@ struct GTestGraphApiExecute
             miopenBackendDestroyDescriptor(descr);
             FAIL() << "Some attributes of " << descrTextName << " were retrieved before finalize()";
         }
+
+        // TEMPCODE: Engine Builder needs an OpGraph
+        // if (descrType == MIOPEN_BACKEND_ENGINE_DESCRIPTOR)
+        // {
+        //     auto dg1 = graphapi_opgraph_tests::makeDiamondGraph();
+        //     EXPECT_EQ(dg1->graph().getEngines().size(), 4)
+        //         << "Tests will fail because makeDiamondGraph has been modified.";
+            
+        //     auto& theDescriptor = static_cast<BackendEngineDescriptor>(miopen::deref(descr));
+        //     theDescriptor.mBuilder.setOpGraph(&dg1->graph());
+        // }
 
         // Finalize
         status = miopenBackendFinalize(descr);
