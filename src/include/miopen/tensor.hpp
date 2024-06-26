@@ -196,6 +196,7 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
     miopenTensorLayout_t GetLayout_t() const;
     static std::string GetLayoutStr(miopenTensorLayout_t layout);
     std::string GetLayout_str() const;
+    bool IsDefaultLayout() const;
 
     std::size_t GetVectorLength() const;
     std::optional<miopenDataType_t> GetCastType() const;
@@ -292,7 +293,28 @@ private:
     void CalculateStrides();
     void CalculateVectorLength();
 
-    static miopenTensorLayout_t GetDefaultLayout() { return miopenTensorNCHW; };
+    static miopenTensorLayout_t GetDefaultLayout(unsigned spatial_dims = 2)
+    {
+        switch (spatial_dims)
+        {
+            case 2: return miopenTensorNCHW;
+            case 3: return miopenTensorNCDHW;
+            default:
+                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
+        }
+    };
+
+    static bool IsDefaultLayout(miopenTensorLayout_t layout, unsigned spatial_dims = 2)
+    {
+        switch (spatial_dims)
+        {
+            case 2:
+            case 3:
+                return layout == GetDefaultLayout();
+            default:
+                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
+        }
+    }
 
     std::vector<std::size_t> lens;
     std::vector<std::size_t> strides;

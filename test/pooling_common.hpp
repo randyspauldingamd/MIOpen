@@ -90,7 +90,7 @@ struct pooling_operators
     miopen::PoolingDescriptor filter;
     pooling_operators(miopen::PoolingDescriptor f) : filter(f) {}
 
-    double start() const
+    double initialize() const
     {
         if(filter.GetMode() == miopenPoolingMax)
             return std::numeric_limits<T>::lowest();
@@ -111,7 +111,7 @@ struct pooling_operators
         }
     }
 
-    double final(double x, double y)
+    double finalize(double x, double y)
     {
         if(filter.GetMode() == miopenPoolingMax)
             return (x);
@@ -127,22 +127,27 @@ struct verify_forward_pooling
     tensor<T>
     cpu(const tensor<T>& input, const miopen::PoolingDescriptor& filter, std::vector<Index>&) const
     {
+        const bool is_default_layout = input.desc.IsDefaultLayout();
+        const int spt_dim_offset = is_default_layout ? 2 : 1;
+        const int chan_dim_offset = is_default_layout ? 1 : SptDim + 1;
+        std::cerr << "========================================================= IsDefault: " << is_default_layout << "  spt_dim: " << spt_dim_offset << "  chan_dim: " << chan_dim_offset << std::endl;
+
         auto out = get_output_tensor(filter, input);
 
         std::array<int, SptDim> in_dim{};
-        std::copy_n(input.desc.GetLengths().begin() + 2, SptDim, in_dim.begin());
+        std::copy_n(input.desc.GetLengths().begin() + spt_dim_offset, SptDim, in_dim.begin());
         std::array<int, SptDim> strides{};
         std::copy_n(filter.GetStrides().begin(), SptDim, strides.begin());
         std::array<int, SptDim> pads{};
         std::copy_n(filter.GetPads().begin(), SptDim, pads.begin());
         std::array<int, SptDim> kers{};
         std::copy_n(filter.GetLengths().begin(), SptDim, kers.begin());
-        auto op = pooling_operators<T>{filter};
+        auto pooler = pooling_operators<T>{filter};
 
         int b_n = out.desc.GetLengths()[0];
-        int k_n = out.desc.GetLengths()[1];
+        int k_n = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
-        std::copy_n(out.desc.GetLengths().begin() + 2, SptDim, out_spatial_len.begin());
+        std::copy_n(out.desc.GetLengths().begin() + spt_dim_offset, SptDim, out_spatial_len.begin());
 
         auto par_ford_out =
             miopen::unpacker(miopen::prepender(par_ford, b_n, k_n))(out_spatial_len);
@@ -167,26 +172,26 @@ struct verify_forward_pooling
                     ? std::accumulate(kers.begin(), kers.end(), 1, std::multiplies<int>())
                     : std::accumulate(win_sz.begin(), win_sz.end(), 1, std::multiplies<int>());
 
-            double acc = op.start();
+            double acc = pooler.initialize();
             miopen::unpacker(ford)(win_sz)([&](auto... in_spatial_id_pack) {
                 auto in_spatial_id = make_array(in_spatial_id_pack...);
                 std::array<std::size_t, SptDim + 2> idx{};
                 idx[0] = o;
-                idx[1] = w;
+                idx[chan_dim_offset] = w;
 
                 bool in_cmp_idx = true;
                 for(int i = 0; i < SptDim; ++i)
                 {
-                    idx[i + 2] = start_idx[i] + in_spatial_id[i];
-                    in_cmp_idx &= (in_dim[i] > idx[i + 2]);
+                    idx[i + spt_dim_offset] = start_idx[i] + in_spatial_id[i];
+                    in_cmp_idx &= (in_dim[i] > idx[i + spt_dim_offset]);
                 }
 
                 if(in_cmp_idx)
                 {
-                    acc = op(acc, input(idx));
+                    acc = pooler(acc, input(idx));
                 }
             });
-            out(o, w, out_spatial_id_pack...) = T(op.final(acc, pool_size));
+            out(o, w, out_spatial_id_pack...) = T(pooler.finalize(acc, pool_size));
         });
         return out;
     }
@@ -248,7 +253,12 @@ struct verify_backward_pooling
                   bool use_global_index,
                   bool verify_index) const
     {
+        const bool is_default_layout = input.desc.IsDefaultLayout();
+        const int spt_dim_offset = is_default_layout ? 2 : 1;
+        const int chan_dim_offset = is_default_layout ? 1 : SptDim + 1;
+
         auto dinput = input;
+
         std::vector<double> din_vec(input.desc.GetElementSpace(), 0.0);
         CHECK(dout.desc == out.desc);
         std::array<int, SptDim + 2> in_dim{};
@@ -264,9 +274,9 @@ struct verify_backward_pooling
         auto ford_ker = miopen::unpacker(ford)(kers);
 
         int out_n = out.desc.GetLengths()[0];
-        int out_c = out.desc.GetLengths()[1];
+        int out_c = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
-        std::copy_n(out.desc.GetLengths().begin() + 2, SptDim, out_spatial_len.begin());
+        std::copy_n(out.desc.GetLengths().begin() + spt_dim_offset, SptDim, out_spatial_len.begin());
         auto ford_out = miopen::unpacker(ford)(out_spatial_len);
 
         par_ford(out_n, out_c)([&](int o, int w) {
@@ -281,12 +291,12 @@ struct verify_backward_pooling
                         for(int i = 0; i < SptDim; i++)
                         {
                             std::size_t mx_idx_dim = mx_idx;
-                            mx_idx_dim /= std::accumulate(in_dim.begin() + i + 3,
+                            mx_idx_dim /= std::accumulate(in_dim.begin() + spt_dim_offset + i + 1,
                                                           in_dim.end(),
                                                           1ULL,
                                                           std::multiplies<std::size_t>());
-                            mx_idx_dim %= in_dim[i + 2];
-                            idx[i + 2] = mx_idx_dim;
+                            mx_idx_dim %= in_dim[i + spt_dim_offset];
+                            idx[i + spt_dim_offset] = mx_idx_dim;
                         }
                     }
                     else
