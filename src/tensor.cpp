@@ -401,7 +401,7 @@ std::string TensorDescriptor::GetLayout_str() const { return GetLayoutStr(this->
 
 bool TensorDescriptor::IsDefaultLayout() const
 {
-    return IsDefaultLayout(tensorLayout, lens.size());
+    return IsDefaultLayout(tensorLayout, lens.size() - 2);
 }
 
 std::size_t TensorDescriptor::GetVectorLength() const { return this->vector_length; }

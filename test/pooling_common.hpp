@@ -130,7 +130,6 @@ struct verify_forward_pooling
         const bool is_default_layout = input.desc.IsDefaultLayout();
         const int spt_dim_offset = is_default_layout ? 2 : 1;
         const int chan_dim_offset = is_default_layout ? 1 : SptDim + 1;
-        std::cerr << "========================================================= IsDefault: " << is_default_layout << "  spt_dim: " << spt_dim_offset << "  chan_dim: " << chan_dim_offset << std::endl;
 
         auto out = get_output_tensor(filter, input);
 
@@ -542,7 +541,7 @@ struct pooling_driver : test_driver
         const bool skip_many_configs_with_non_int8_index =
             (dataset_id == 0) && full_set; // Otherwise the default dataset takes too much time.
         const bool wide_dataset = (dataset_id == 2) && full_set;
-
+-
         filter = miopen::PoolingDescriptor
         {
             mode_lookup.at(miopen::ToUpper(mode)),
