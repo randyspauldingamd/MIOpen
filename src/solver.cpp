@@ -561,11 +561,17 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForward2d{}.SolverDbId());
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNd{}.SolverDbId());
 
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardCk2d{}.SolverDbId());
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardCkNd{}.SolverDbId());
+
     Register(registry, ++id, Primitive::Pooling, pooling::TransposedPoolingFwd2d{}.SolverDbId());
     Register(registry, ++id, Primitive::Pooling, pooling::TransposedPoolingFwdNd{}.SolverDbId());
 
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingBackward2d{}.SolverDbId());
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingBackwardNd{}.SolverDbId());
+
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingBackwardCk2d{}.SolverDbId());
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingBackwardCkNd{}.SolverDbId());
 
     RegisterWithSolver(registry,
                        ++id,
@@ -594,6 +600,7 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
              fusion::ConvCKIgemmFwdBiasActivFused{}.SolverDbId(),
              miopenConvolutionAlgoImplicitGEMM);
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNaive{}.SolverDbId());
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNdNhwcNaive{}.SolverDbId());
     RegisterWithSolver(registry,
                        ++id,
                        conv::ConvHipImplicitGemmGroupFwdXdlops{},

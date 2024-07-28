@@ -66,9 +66,46 @@ struct PoolingForwardNd final : PoolingSolver
                                  const miopen::pooling::ProblemDescription& problem) const override;
 };
 
+struct PoolingForwardCk2d final : PoolingSolver
+{
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardCk2d>(); }
+
+    bool IsApplicable(const ExecutionContext& context,
+                      const miopen::pooling::ProblemDescription& problem) const override;
+    ConvSolution GetSolution(const ExecutionContext& context,
+                             const miopen::pooling::ProblemDescription& problem) const override;
+    std::size_t GetWorkspaceSize(const ExecutionContext& context,
+                                 const miopen::pooling::ProblemDescription& problem) const override;
+};
+
+struct PoolingForwardCkNd final : PoolingSolver
+{
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardCkNd>(); }
+
+    bool IsApplicable(const ExecutionContext& context,
+                      const miopen::pooling::ProblemDescription& problem) const override;
+    ConvSolution GetSolution(const ExecutionContext& context,
+                             const miopen::pooling::ProblemDescription& problem) const override;
+    std::size_t GetWorkspaceSize(const ExecutionContext& context,
+                                 const miopen::pooling::ProblemDescription& problem) const override;
+};
+
 struct PoolingForwardNaive final : PoolingSolver
 {
     const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardNaive>(); }
+    bool IsDynamic() const override { return true; }
+
+    bool IsApplicable(const ExecutionContext& context,
+                      const miopen::pooling::ProblemDescription& problem) const override;
+    ConvSolution GetSolution(const ExecutionContext& context,
+                             const miopen::pooling::ProblemDescription& problem) const override;
+    std::size_t GetWorkspaceSize(const ExecutionContext& context,
+                                 const miopen::pooling::ProblemDescription& problem) const override;
+};
+
+struct PoolingForwardNdNhwcNaive final : PoolingSolver
+{
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardNdNhwcNaive>(); }
     bool IsDynamic() const override { return true; }
 
     bool IsApplicable(const ExecutionContext& context,
@@ -145,9 +182,33 @@ struct PoolingBackward2d final : PoolingSolver
                                  const miopen::pooling::ProblemDescription& problem) const override;
 };
 
+struct PoolingBackwardCk2d final : PoolingSolver
+{
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingBackwardCk2d>(); }
+
+    bool IsApplicable(const ExecutionContext& context,
+                      const miopen::pooling::ProblemDescription& problem) const override;
+    ConvSolution GetSolution(const ExecutionContext& context,
+                             const miopen::pooling::ProblemDescription& problem) const override;
+    std::size_t GetWorkspaceSize(const ExecutionContext& context,
+                                 const miopen::pooling::ProblemDescription& problem) const override;
+};
+
 struct PoolingBackwardNd final : PoolingSolver
 {
     const std::string& SolverDbId() const override { return GetSolverDbId<PoolingBackwardNd>(); }
+
+    bool IsApplicable(const ExecutionContext& context,
+                      const miopen::pooling::ProblemDescription& problem) const override;
+    ConvSolution GetSolution(const ExecutionContext& context,
+                             const miopen::pooling::ProblemDescription& problem) const override;
+    std::size_t GetWorkspaceSize(const ExecutionContext& context,
+                                 const miopen::pooling::ProblemDescription& problem) const override;
+};
+
+struct PoolingBackwardCkNd final : PoolingSolver
+{
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingBackwardCkNd>(); }
 
     bool IsApplicable(const ExecutionContext& context,
                       const miopen::pooling::ProblemDescription& problem) const override;

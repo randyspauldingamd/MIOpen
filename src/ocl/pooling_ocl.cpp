@@ -42,6 +42,9 @@ static auto PoolingForwardSolvers()
     return solver::SolverContainer<solver::pooling::PoolingForward2d,
                                    solver::pooling::PoolingForwardNd,
                                    solver::pooling::PoolingForwardNaive,
+                                   solver::pooling::PoolingForwardNdNhwcNaive,
+                                   solver::pooling::PoolingForwardCk2d,
+                                   solver::pooling::PoolingForwardCkNd,
                                    solver::pooling::TransposedPoolingFwd2d,
                                    solver::pooling::TransposedPoolingFwdNd>{};
 }
@@ -50,6 +53,8 @@ static auto PoolingBackwardSolvers()
 {
     return solver::SolverContainer<solver::pooling::PoolingBackward2d,
                                    solver::pooling::PoolingBackwardNd,
+                                   solver::pooling::PoolingBackwardCk2d,
+                                   solver::pooling::PoolingBackwardCkNd,
                                    solver::pooling::TransposedPoolingBwd2d,
                                    solver::pooling::TransposedPoolingBwdNd>{};
 }

@@ -75,14 +75,15 @@ bool PoolingForwardNaive::IsApplicable(const ExecutionContext&,
            && (problem.GetPooling().GetMode() == miopenPoolingMax                  //
                || problem.GetPooling().GetMode() == miopenPoolingAverage           //
                || problem.GetPooling().GetMode() == miopenPoolingAverageInclusive) //
+           && (problem.GetXDesc().GetLayout("NCDHW") == problem.GetYDesc().GetLayout("NCDHW")) //
            && (                                                                    //
                   (problem.GetXDesc().GetNumDims() == 5                            //
-                   && problem.GetXDesc().GetLayout("NCDHW") == "NCDHW"             //
-                   && problem.GetYDesc().GetLayout("NCDHW") == "NCDHW")            //
+                   && (problem.GetXDesc().GetLayout("NCDHW") == "NCDHW"            //
+                   || problem.GetXDesc().GetLayout("NCDHW") == "NDHWC"))           //
                   ||                                                               //
                   (problem.GetXDesc().GetNumDims() == 4                            //
-                   && problem.GetXDesc().GetLayout("NCHW") == "NCHW"               //
-                   && problem.GetYDesc().GetLayout("NCHW") == "NCHW")              //
+                   && (problem.GetXDesc().GetLayout("NCHW") == "NCHW"              //
+                   || problem.GetYDesc().GetLayout("NCHW") == "NHWC"))             //
               );
 }
 
@@ -95,6 +96,7 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
     const auto bot  = problem.GetXDesc();
     const auto top  = problem.GetYDesc();
     const bool is2d = (bot.GetNumDims() == 4);
+    const bool isTranspose = problem.GetXDesc().GetLayout("NCHW")[1] == 'C';
 
     // To compact code:
     const auto& pooling = problem.GetPooling();
@@ -208,8 +210,16 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
     {
         auto kernel = KernelInfo{};
 
-        kernel.kernel_file = "MIOpenPoolingForwardNaive.cl";
-        kernel.kernel_name = "mloPoolingForwardNaive";
+        if(isTranspose)
+        {
+            kernel.kernel_file = "MIOpenPoolingFwdNDNhwcNaive.cpp";
+            kernel.kernel_name = "mloPoolingForwardNDNhwcNaive";
+        }
+        else
+        {
+            kernel.kernel_file = "MIOpenPoolingForwardNaive.cl";
+            kernel.kernel_name = "mloPoolingForwardNaive";
+        }
 
         auto build_params = KernelBuildParameters{
             {"MLO_POOLING_OP_ID", pooling_method}, // We need this at compile time in order to
@@ -218,7 +228,10 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
             {"MLO_POOLING_IS2D_KERNEL", static_cast<int>(is2d_kernel)},
         };
         build_params << GetDataTypeKBP(bot.GetType());
-        kernel.comp_options = build_params.GenerateFor(kbp::OpenCL{});
+        if(isTranspose)
+            kernel.comp_options = build_params.GenerateFor(kbp::HIP{});
+        else
+            kernel.comp_options = build_params.GenerateFor(kbp::OpenCL{});
 
         // [Informative] The total number of kernels required to cover the whole
         // forward pooling problem space is 3*4*2*2 = 48. The solver is dynamic.
@@ -237,50 +250,80 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
         result.construction_params.push_back(kernel);
     }
 
-    result.invoker_factory = [=](const std::vector<Kernel>& kernels) {
-        return [=](const Handle& handle, const AnyInvokeParams& raw_params) {
-            decltype(auto) kernel = handle.Run(kernels.front());
-            decltype(auto) params = raw_params.CastTo<miopen::pooling::FwdInvokeParams>();
+    if(isTranspose)
+    {
+        result.invoker_factory = [=](const std::vector<Kernel>& kernels) {
+            return [=](const Handle& handle, const AnyInvokeParams& raw_params) {
+                decltype(auto) kernel = handle.Run(kernels.front());
+                decltype(auto) params = raw_params.CastTo<miopen::pooling::FwdInvokeParams>();
 
-            kernel(params.x,
-                   params.y,
-                   params.workspace,
-                   save_index,
-                   index_mode,
-                   filter_d,
-                   filter_h,
-                   filter_w,
-                   filter_d_stride,
-                   filter_h_stride,
-                   filter_w_stride,
-                   filter_d_pad,
-                   filter_h_pad,
-                   filter_w_pad,
-                   all_n,
-                   all_c,
-                   bot_d,
-                   bot_h,
-                   bot_w,
-                   bot_n_stride,
-                   bot_c_stride,
-                   bot_d_stride,
-                   bot_h_stride,
-                   bot_w_stride,
-                   top_d,
-                   top_h,
-                   top_w,
-                   top_n_stride,
-                   top_c_stride,
-                   top_d_stride,
-                   top_h_stride,
-                   top_w_stride,
-                   mask_n_stride,
-                   mask_c_stride,
-                   mask_d_stride,
-                   mask_h_stride,
-                   mask_w_stride);
+                // NOTE: kernel 'mloPoolingForwardNDNhwcNaive' expects indices in DHW[NC] order
+                kernel(params.x,
+                    params.y,
+                    params.workspace,
+                    save_index,
+                    index_mode,
+                    std::vector<uint32_t>{filter_d, filter_h, filter_w},
+                    std::vector<uint32_t>{filter_d_stride, filter_h_stride, filter_w_stride},
+                    std::vector<uint32_t>{filter_d_pad, filter_h_pad, filter_w_pad},
+                    all_n,
+                    all_c,
+                    std::vector<uint32_t>{bot_d, bot_h, bot_w},
+                    std::vector<size_t>{bot_d_stride, bot_h_stride, bot_w_stride, bot_n_stride, bot_c_stride},
+                    std::vector<uint32_t>{top_d, top_h, top_w},
+                    std::vector<size_t>{top_d_stride, top_h_stride, top_w_stride, top_n_stride, top_c_stride},
+                    std::vector<size_t>{mask_d_stride, mask_h_stride, mask_w_stride, mask_n_stride, mask_c_stride});
+            };
         };
-    };
+    }
+    else
+    {
+        result.invoker_factory = [=](const std::vector<Kernel>& kernels) {
+            return [=](const Handle& handle, const AnyInvokeParams& raw_params) {
+                decltype(auto) kernel = handle.Run(kernels.front());
+                decltype(auto) params = raw_params.CastTo<miopen::pooling::FwdInvokeParams>();
+
+                kernel(params.x,
+                    params.y,
+                    params.workspace,
+                    save_index,
+                    index_mode,
+                    filter_d,
+                    filter_h,
+                    filter_w,
+                    filter_d_stride,
+                    filter_h_stride,
+                    filter_w_stride,
+                    filter_d_pad,
+                    filter_h_pad,
+                    filter_w_pad,
+                    all_n,
+                    all_c,
+                    bot_h,
+                    bot_d,  // TODO RJS: broke it
+                    bot_w,
+                    bot_n_stride,
+                    bot_c_stride,
+                    bot_d_stride,
+                    bot_h_stride,
+                    bot_w_stride,
+                    top_d,
+                    top_h,
+                    top_w,
+                    top_n_stride,
+                    top_c_stride,
+                    top_d_stride,
+                    top_h_stride,
+                    top_w_stride,
+                    mask_n_stride,
+                    mask_c_stride,
+                    mask_d_stride,
+                    mask_h_stride,
+                    mask_w_stride);
+            };
+        };
+    }
+
     return result;
 }
 

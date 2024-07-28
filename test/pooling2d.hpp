@@ -29,12 +29,12 @@
 #define WORKAROUND_ISSUE_1670 1
 #define TEST_GET_INPUT_TENSOR 0
 
-template <class T>
-struct pooling2d_driver : pooling_driver<T>
+struct pooling2d_shapes
 {
-private:
+public:
     using U = typename std::vector<int>;
-    std::vector<U> get_2d_pooling_input_shapes()
+
+    static std::vector<U> get_2d_pooling_input_shapes()
     {
         return {{1, 19, 1024, 2048},
                 {10, 3, 32, 32},
@@ -57,12 +57,32 @@ private:
     }
 
     // Dataset 1 is intended for testing of asymmetric configs.
-    std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 4, 4, 4}}; }
+    static std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 4, 4, 4}}; }
+
+    // Dataset 2 is intended for testing of configs with wide window.
+    static std::vector<U> get_2d_pooling_input_shapes_wide()
+    {
+        return {{1, 3, 255, 255}, {2, 3, 227, 227}, {1, 7, 127, 127}, {1, 1, 410, 400}};
+    }
+};
+
+template <class T>
+struct pooling2d_driver : pooling_driver<T>
+{
+private:
+    using U = typename std::vector<int>;
+    std::vector<U> get_2d_pooling_input_shapes()
+    {
+        return pooling2d_shapes::get_2d_pooling_input_shapes();
+    }
+
+    // Dataset 1 is intended for testing of asymmetric configs.
+    std::vector<U> get_2d_pooling_input_shapes_minimal() { return pooling2d_shapes::get_2d_pooling_input_shapes_minimal(); }
 
     // Dataset 2 is intended for testing of configs with wide window.
     std::vector<U> get_2d_pooling_input_shapes_wide()
     {
-        return {{1, 3, 255, 255}, {2, 3, 227, 227}, {1, 7, 127, 127}, {1, 1, 410, 400}};
+        return pooling2d_shapes::get_2d_pooling_input_shapes_wide();
     }
 
 public:

@@ -289,8 +289,12 @@ set( MIOpen_Source
     solver/pooling/forward2d.cpp
     solver/pooling/forwardNaive.cpp
     solver/pooling/forwardNd.cpp
+    solver/pooling/forwardCk2d.cpp
+    solver/pooling/forwardCkNd.cpp
     solver/pooling/backward2d.cpp
     solver/pooling/backwardNd.cpp
+    solver/pooling/backwardCk2d.cpp
+    solver/pooling/backwardCkNd.cpp
     solver/reduce/forward_argmax.cpp
     solver/reduce/forward_argmin.cpp
     solver/reduce/forward_max.cpp
@@ -495,6 +499,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/MIOpenPoolingBwd.cl
         kernels/MIOpenPoolingBwdND.cl
         kernels/MIOpenPoolingForwardNaive.cl
+        kernels/MIOpenPoolingFwdNDNhwcNaive.cpp
         kernels/MIOpenPoolingND.cl
         kernels/MIOpenConv1x1S.cl
         kernels/MIOpenConv1x1J1.cl

@@ -145,7 +145,7 @@ __kernel void mloPoolingForwardNaive(const __global _FLOAT* bot_ptr,
             uint h_save          = 0;
             uint w_save          = 0;
 #endif
-        for(uint d = dstart; d < dend; ++d)
+        for(size_t d = dstart; d < dend; ++d)
         {
             for(uint h = hstart; h < hend; ++h)
             {
@@ -153,7 +153,7 @@ __kernel void mloPoolingForwardNaive(const __global _FLOAT* bot_ptr,
                 {
                     const size_t bot_index = b * bot_n_stride             //
                                              + o * bot_c_stride           //
-                                             + (size_t)(d * bot_d_stride) //
+                                             + d * bot_d_stride //
                                              + (size_t)(h * bot_h_stride) //
                                              + (size_t)(w * bot_w_stride);
 #if AVERAGE_OPS
