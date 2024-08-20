@@ -600,7 +600,7 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
              fusion::ConvCKIgemmFwdBiasActivFused{}.SolverDbId(),
              miopenConvolutionAlgoImplicitGEMM);
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNaive{}.SolverDbId());
-    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNdNhwcNaive{}.SolverDbId());
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNDNhwcNaive{}.SolverDbId());
     RegisterWithSolver(registry,
                        ++id,
                        conv::ConvHipImplicitGemmGroupFwdXdlops{},

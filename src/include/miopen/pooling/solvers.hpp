@@ -103,10 +103,9 @@ struct PoolingForwardNaive final : PoolingSolver
                                  const miopen::pooling::ProblemDescription& problem) const override;
 };
 
-struct PoolingForwardNdNhwcNaive final : PoolingSolver
+struct PoolingForwardNDNhwcNaive final : PoolingSolver
 {
-    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardNdNhwcNaive>(); }
-    bool IsDynamic() const override { return true; }
+    const std::string& SolverDbId() const override { return GetSolverDbId<PoolingForwardNDNhwcNaive>(); }
 
     bool IsApplicable(const ExecutionContext& context,
                       const miopen::pooling::ProblemDescription& problem) const override;

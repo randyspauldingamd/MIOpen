@@ -24,6 +24,8 @@
  *
  *******************************************************************************/
 
+#ifndef POOLING_GTEST_BUILD
+
 #include <gtest/gtest.h>
 #include <miopen/env.hpp>
 #include "get_handle.hpp"
@@ -32,6 +34,7 @@
 #include "pooling2d.hpp"
 
 #include "tensor_holder.hpp"
+#include "miopen/tensor_layout.hpp"
 
 MIOPEN_DECLARE_ENV_VAR_BOOL(MIOPEN_TEST_ALL)
 MIOPEN_DECLARE_ENV_VAR_STR(MIOPEN_TEST_FLAGS_ARGS)
@@ -39,8 +42,9 @@ MIOPEN_DECLARE_ENV_VAR_STR(MIOPEN_TEST_FLAGS_ARGS)
 namespace env = miopen::env;
 
 namespace {
+
 template <typename T>
-struct tensor_data
+struct layout_data
 {
     static std::vector<int> get_layout_lengths(int n, int c, std::vector<int>& dims)
     {
@@ -109,48 +113,114 @@ struct tensor_data
 
 }
 
-namespace pooling_tests {
+class PoolingFwd : public testing::TestWithParam<std::vector<std::string>> {};
+class PoolingFwdFloat : public PoolingFwd {};
+class PoolingFwdHalf : public PoolingFwd {};
 
-class PoolingFwdNdNaive : public testing::TestWithParam<std::vector<std::string>>
-{
-};
+void Run2dDriver(miopenDataType_t prec);
+
+namespace {
 
 static bool SkipTest(void) { return env::disabled(MIOPEN_TEST_ALL); }
 
-// void GetArgs(const std::string& param, std::vector<std::string>& tokens)
-// {
-//     std::stringstream ss(param);
-//     std::istream_iterator<std::string> begin(ss);
-//     std::istream_iterator<std::string> end;
-//     while(begin != end)
-//         tokens.push_back(*begin++);
-// }
+void GetArgs(const std::string& param, std::vector<std::string>& tokens)
+{
+    std::stringstream ss(param);
+    std::istream_iterator<std::string> begin(ss);
+    std::istream_iterator<std::string> end;
+    while(begin != end)
+        tokens.push_back(*begin++);
+}
+
+bool IsTestSupportedForDevice(const miopen::Handle& handle) { return true; }
+
+std::vector<std::string> GetTestCases(const std::string precision)
+{
+    const auto& flag_arg = env::value(MIOPEN_TEST_FLAGS_ARGS);
+
+    const std::vector<std::string> test_cases = {
+        // clang-format off
+    {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg}
+        // clang-format on
+    };
+
+    return test_cases;
+}
+} // namespace pooling_tests
+// using namespace pooling_tests;
+
+TEST_P(PoolingFwdFloat, NNT)    // NDNaiveTranspose
+{
+    const auto& handle = get_handle();
+    if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
+    if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
+    // if(!IsTestRunWith("--float"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT!" << std::endl;
+        // Run2dDriver(miopenFloat);   return; // TEMPCODE RJS
+    //  && IsTestRunWith("--float")
+    if(IsTestSupportedForDevice(handle) && !SkipTest())
+    {
+        Run2dDriver(miopenFloat);
+    }
+    else
+    {
+        GTEST_SKIP();
+    }
+};
+
+TEST_P(PoolingFwdHalf, NNT)
+{
+    const auto& handle = get_handle();
+    if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
+    if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
+    // if(!IsTestRunWith("--half"))           std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
+
+    if(IsTestSupportedForDevice(handle) && !SkipTest()) //  && IsTestRunWith("--half") TEMPCODE RJS
+    {
+        Run2dDriver(miopenHalf);
+    }
+    else
+    {
+        GTEST_SKIP();
+    }
+};
 
 void Run2dDriver(miopenDataType_t prec)
 {
-
+    auto cases = GetTestCases("--float");
+       std::cerr << " Cases: " << cases.size() << std::endl;
+    for(const auto& test_value : cases)
+    {
+        std::cerr << "      : " << test_value << std::endl;    // TEMPCODE RJS
+    }
+ 
     std::vector<std::string> params;
     switch(prec)
     {
-    case miopenFloat: params = Pooling2dFloat::GetParam(); break;
-    case miopenHalf: params = WidePooling2dHalf::GetParam(); break;
+    case miopenFloat: params = PoolingFwdFloat_NNT_Test::GetParam(); break;
+    case miopenHalf: params = PoolingFwdHalf_NNT_Test::GetParam(); break;
     case miopenBFloat16:
     case miopenInt8:
+    case miopenInt32:
+    case miopenDouble:
     case miopenFloat8:
     case miopenBFloat8:
-    case miopenInt32:
     case miopenInt64:
-    case miopenDouble:
         FAIL()
-            << "miopenBFloat16, miopenInt8, miopenInt32, miopenDouble, miopenFloat8, miopenBFloat8 "
+            << "miopenBFloat16, miopenInt8, miopenInt32, miopenDouble, miopenFloat8, miopenBFloat8, miopenInt64 "
                "data type not supported by "
-               "immed_conv2d_codecov test";
+               "poolingFwdNdNaive test";
 
-    default: params = Pooling2dFloat::GetParam();
+    default: params = PoolingFwdFloat_NNT_Test::GetParam();
     }
 
+    std::cerr << "Params: " << params.size() << std::endl;
     for(const auto& test_value : params)
     {
+        std::cerr << "      : " << test_value << std::endl;    // TEMPCODE RJS
+    }
+    for(const auto& test_value : params)
+    {
+        std::cerr << "Testing: " << test_value << std::endl;    // TEMPCODE RJS
         std::vector<std::string> tokens;
         GetArgs(test_value, tokens);
         std::vector<const char*> ptrs;
@@ -164,54 +234,10 @@ void Run2dDriver(miopenDataType_t prec)
         auto capture = testing::internal::GetCapturedStderr();
         std::cout << capture;
     }
-};
-
-bool IsTestSupportedForDevice(const miopen::Handle& handle) { return true; }
-
-std::vector<std::string> GetTestCases(const std::string precision)
-{
-    const auto& flag_arg = env::value(MIOPEN_TEST_FLAGS_ARGS);
-
-    const std::vector<std::string> test_cases = {
-        // clang-format off
-    {"test_pooling2d " + precision + " --all --dataset 2 --limit 0 "+flag_arg}
-        // clang-format on
-    };
-
-    return test_cases;
 }
 
-} // namespace pooling_tests
-using namespace pooling_tests;
+INSTANTIATE_TEST_SUITE_P(Float, PoolingFwdFloat, testing::Values(GetTestCases("--float")));
 
-/*
-TEST_P(Pooling2dFloat, FloatTest_pooling2d_wide)
-{
-    const auto& handle = get_handle();
-    if(IsTestSupportedForDevice(handle) && !SkipTest() && IsTestRunWith("--float"))
-    {
-        Run2dDriver(miopenFloat);
-    }
-    else
-    {
-        GTEST_SKIP();
-    }
-};
-*/
+INSTANTIATE_TEST_SUITE_P(Half, PoolingFwdHalf, testing::Values(GetTestCases("--half")));
 
-TEST_P(WidePooling2dHalf, HalfTest_pooling2d_wide)
-{
-    const auto& handle = get_handle();
-    if(IsTestSupportedForDevice(handle) && !SkipTest() && IsTestRunWith("--half"))
-    {
-        Run2dDriver(miopenHalf);
-    }
-    else
-    {
-        GTEST_SKIP();
-    }
-};
-
-// INSTANTIATE_TEST_SUITE_P(Pooling2D, Pooling2dFloat, testing::Values(GetTestCases("--float")));
-
-INSTANTIATE_TEST_SUITE_P(Pooling2D, WidePooling2dHalf, testing::Values(GetTestCases("--half")));
+#endif

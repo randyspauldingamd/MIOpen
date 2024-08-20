@@ -42,7 +42,7 @@ static auto PoolingForwardSolvers()
     return solver::SolverContainer<solver::pooling::PoolingForward2d,
                                    solver::pooling::PoolingForwardNd,
                                    solver::pooling::PoolingForwardNaive,
-                                   solver::pooling::PoolingForwardNdNhwcNaive,
+                                   solver::pooling::PoolingForwardNDNhwcNaive,
                                    solver::pooling::PoolingForwardCk2d,
                                    solver::pooling::PoolingForwardCkNd,
                                    solver::pooling::TransposedPoolingFwd2d,
@@ -68,7 +68,8 @@ miopenStatus_t PoolingDescriptor::Forward(Handle& handle,
                                           Data_t y,
                                           bool save_index,
                                           Data_t workSpace,
-                                          size_t workSpaceSize) const
+                                          size_t workSpaceSize,
+                                          Data_t junk) const    // TEMPCODE RJS
 {
 
     if(!float_equal(*(static_cast<const float*>(alpha)), 1.0) ||
@@ -131,6 +132,7 @@ miopenStatus_t PoolingDescriptor::Forward(Handle& handle,
         tmp.y              = y;
         tmp.workspace      = workSpace;
         tmp.workspace_size = workSpaceSize;
+        tmp.junk = junk;    // TEMPCODE RJS
         return tmp;
     }();
 

@@ -396,7 +396,7 @@ typedef enum
     miopenTensorCHWNc4 = 5, /*!< CHWNc4 memory layout (Partially supported) */
     miopenTensorCHWNc8 = 6, /*!< CHWNc8 memory layout (Partially supported) */
     miopenTensorNCDHW  = 7, /*!< NCDHW memory layout (Fully supported) */
-    miopenTensorNDHWC  = 8, /*!< NCDHW memory layout (Fully supported) */
+    miopenTensorNDHWC  = 8, /*!< NDHWC memory layout (Fully supported) */
 } miopenTensorLayout_t;
 
 /*! @ingroup pooling

@@ -135,7 +135,8 @@ std::size_t sizeof_private_memory(const miopen::pooling::ProblemDescription& pro
 bool PoolingForward2d::IsApplicable(const ExecutionContext& context,
                                     const miopen::pooling::ProblemDescription& problem) const
 {
-    return problem.GetDirection() == miopen::pooling::Direction::Forward &&
+    bool app =
+    problem.GetDirection() == miopen::pooling::Direction::Forward &&
            problem.GetXDesc().GetNumDims() == 4 &&
            problem.GetXDesc().GetType() == problem.GetYDesc().GetType() &&
            (problem.GetXDesc().GetType() == miopenFloat ||
@@ -144,6 +145,23 @@ bool PoolingForward2d::IsApplicable(const ExecutionContext& context,
            problem.GetYDesc().GetLayout("NCHW") == "NCHW" &&
            sizeof_private_memory(problem) <=
                TargetProperties::GetMaxWaveScratchSize() / context.GetStream().GetWavefrontWidth();
+
+// TEMPCODE RJS
+    std::cout << "%%%%%%%%%% PoolingForward2d::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout("NCHW") << std::endl;
+    return false;
+               return app;
+}
+
+#include <iomanip>  // TEMPCODE RJS
+namespace {
+    template<typename T>
+    void printVec(std::string name, const std::vector<T>& vec)
+    {
+        return;
+        std::cout << "Vector Printing: " << std::setw(20) << name << "[" << vec.size() << "]: ";
+        for(auto i : vec)    std::cout << std::setw(8) << i;
+        std::cout << std::endl;
+    }
 }
 
 ConvSolution PoolingForward2d::GetSolution(const ExecutionContext&,
@@ -181,6 +199,25 @@ ConvSolution PoolingForward2d::GetSolution(const ExecutionContext&,
                 ? MLO_POOLING_OP_MAX
                 : ((pool_d.GetMode() == miopenPoolingAverage) ? MLO_POOLING_OP_AVE
                                                               : MLO_POOLING_OP_AVE_INCLUSIVE);
+
+
+    // TEMPCODE RJS
+        const auto bot  = problem.GetXDesc();
+    const auto top  = problem.GetYDesc();
+    const auto& pooling = problem.GetPooling();
+    const auto& lengths = pooling.GetLengths();
+    const auto& strides = pooling.GetStrides();
+    const auto& pads    = pooling.GetPads();
+
+    std::cout << "======================================================================" << std::endl;
+    printVec("bot lengths", bot.GetLengths());
+    printVec("bot strides", bot.GetStrides());
+    printVec("top lengths", top.GetLengths());
+    printVec("top strides", top.GetStrides());
+    printVec("pool lengths", lengths);
+    printVec("pool strides", strides);
+    printVec("pool pads", pads);
+    std::cout << "======================================================================" << std::endl;
 
         auto build_params = KernelBuildParameters{
             {"MLO_POOLING_OP_ID", pooling_method},

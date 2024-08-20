@@ -32,6 +32,7 @@
 #include <miopen/scalar.hpp>
 
 #include <miopen/problem_description_base.hpp>
+#include <miopen/problem_description_layout.hpp>
 #include <miopen/tensor.hpp>
 #include <miopen/convolution.hpp>
 
@@ -136,7 +137,7 @@ namespace conv {
 MIOPEN_INTERNALS_EXPORT miopenAlphaBetaCase_t ClassifyAlphaBeta(const Scalar& alpha,
                                                                 const Scalar& beta);
 
-struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionBase
+struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBase
 #if MIOPEN_ENABLE_SQLITE
     ,
                                                     SQLiteSerializable<ProblemDescription>
@@ -153,13 +154,8 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionBase
                        int bias_            = 0,
                        const Scalar& alpha_ = Scalar(1.0),
                        const Scalar& beta_  = Scalar(0.0))
-        : in(in_),
-          weights(weights_),
-          out(out_),
+        : ProblemDescriptionWeightsBase(in_, weights_, out_),
           conv(conv_),
-          in_layout(ComputeInLayout()),
-          weights_layout(ComputeWeightsLayout()),
-          out_layout(ComputeOutLayout()),
           direction(direction_),
           bias(bias_),
           alpha(alpha_),
@@ -443,49 +439,7 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionBase
     void SetupFloats(ExecutionContext& ctx) const;
 
 private:
-    std::string ComputeInLayout() const
-    {
-        if(GetSpatialDims() == 2)
-        {
-            return in.GetLayout(in.GetLayout_str());
-        }
-        else
-        {
-            return in.GetLayout("NCDHW");
-        }
-    }
-
-    std::string ComputeOutLayout() const
-    {
-        if(GetSpatialDims() == 2)
-        {
-            return out.GetLayout(out.GetLayout_str());
-        }
-        else
-        {
-            return out.GetLayout("NCDHW");
-        }
-    }
-
-    std::string ComputeWeightsLayout() const
-    {
-        if(GetSpatialDims() == 2)
-        {
-            return weights.GetLayout(weights.GetLayout_str());
-        }
-        else
-        {
-            return weights.GetLayout("NCDHW");
-        }
-    }
-
-    TensorDescriptor in;
-    TensorDescriptor weights;
-    TensorDescriptor out;
     ConvolutionDescriptor conv;
-    std::string in_layout;
-    std::string weights_layout;
-    std::string out_layout;
     Direction direction                   = Direction::Forward;
     int bias                              = 0;
     Scalar alpha                          = Scalar(1.0);

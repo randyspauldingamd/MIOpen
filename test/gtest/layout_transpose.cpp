@@ -274,7 +274,52 @@ protected:
                 miopen::tensor_layout_to_strides(
                     tensor_len, layout_default, layout_string, tensor_strides);
 
-                auto t_src     = tensor<T>{tensor_len, tensor_strides}.generate(gen_value<T>);
+                auto t_src     = tensor<T>{tensor_len, tensor_strides};
+        bool printing = true; // in_dim[0]==8 && in_dim[1]==8;
+        if(printing)
+        {
+            auto inlen = t_src.desc.GetLengths();
+            auto instr = t_src.desc.GetStrides();
+            std::cout << "CPU in : ";
+            for(auto dim : inlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : instr) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < inlen[0]; ++nn) {
+                for(int cc = 0; cc < inlen[1]; ++cc) {
+            for(int hh = 0; hh < inlen[2]; ++hh) {
+                for(int ww = 0; ww < inlen[3]; ++ww) {
+                    std::cout << std::setw(11) << std::setprecision(5) << t_src(nn * instr[0] + cc * instr[1] + hh * instr[2] + ww * instr[3]) << "  ";
+                }
+            std::cout << std::endl;
+            }
+            }
+            }
+        }
+
+                t_src.generate(gen_value<T>);
+        if(printing)
+        {
+            auto inlen = t_src.desc.GetLengths();
+            auto instr = t_src.desc.GetStrides();
+            std::cout << "CPU in : ";
+            for(auto dim : inlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : instr) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < inlen[0]; ++nn) {
+                for(int cc = 0; cc < inlen[1]; ++cc) {
+            for(int hh = 0; hh < inlen[2]; ++hh) {
+                for(int ww = 0; ww < inlen[3]; ++ww) {
+                    std::cout << std::setw(11) << std::setprecision(5) << t_src(nn * instr[0] + cc * instr[1] + hh * instr[2] + ww * instr[3]) << "  ";
+                }
+            std::cout << std::endl;
+            }
+            }
+            }
+        }
                 auto t_dst     = tensor<T>{tensor_len, tensor_strides};
                 auto t_dst_gpu = tensor<T>{tensor_len, tensor_strides};
 

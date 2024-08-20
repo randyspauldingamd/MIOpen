@@ -887,6 +887,7 @@ public:
         const auto log = GetLog(false);
         if(!log.empty())
             MIOPEN_LOG_I(log);
+        std::cout << "************** HipRTC compile log: '" << log << "'" << std::endl; // TEMPCODE RJS
     }
 
     void GetCode(std::vector<char>& bytes) const
@@ -988,7 +989,9 @@ void BuildHip(const std::string& name,
             opts.push_back("-std=c++17");
 
         HiprtcProgram prog(name, text);
+        try{    // TEMPCODE RJS
         prog.Compile(opts);
+        } catch(Error& ex) { std::cout << __FUNCTION__ << " : Exception calling prog.Compile!: " << ex.text << std::endl; throw(ex); }
         prog.GetCode(binary);
     }
     catch(Error& ex)

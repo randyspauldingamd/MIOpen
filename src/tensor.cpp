@@ -154,6 +154,14 @@ TensorDescriptor::TensorDescriptor(miopenDataType_t t,
 }
 
 TensorDescriptor::TensorDescriptor(miopenDataType_t t,
+                                  miopenTensorLayout_t layout_in,
+                                    const std::vector<int>& lens_in,
+                     const std::vector<int>& strides_in)
+    : TensorDescriptor(t, layout_in, ConvertLengthsOrThrow(lens_in, "Lengths must be > 0"), ConvertLengthsOrThrow(strides_in, "Strides must be > 0"))
+{
+}
+
+TensorDescriptor::TensorDescriptor(miopenDataType_t t,
                                    miopenTensorLayout_t layout_in,
                                    const std::initializer_list<std::size_t>& lens_in)
     : TensorDescriptor(t, layout_in, std::vector<std::size_t>(lens_in))
@@ -445,6 +453,11 @@ std::string TensorDescriptor::GetLayoutStr(miopenTensorLayout_t tensorLayout)
 }
 
 std::string TensorDescriptor::GetLayout_str() const { return GetLayoutStr(this->tensorLayout); }
+
+bool TensorDescriptor::IsDefaultLayout() const
+{
+    return IsDefaultLayout(tensorLayout, lens.size() - 2);
+}
 
 std::size_t TensorDescriptor::GetVectorLength() const { return this->vector_length; }
 

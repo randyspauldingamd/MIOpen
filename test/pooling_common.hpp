@@ -60,7 +60,17 @@ static int num_uint64_case = 0;
 // NOLINTNEXTLINE (cppcoreguidelines-avoid-non-const-global-variables)
 static int num_uint64_case_imgidx = 0;
 
-static inline void print(const miopen::PoolingDescriptor& filter)
+namespace {
+
+constexpr int RAND_INTEGER_MAX = 1200;
+constexpr int RAND_INTEGER_MIN = -880;
+
+template <typename T>
+auto gen_value =
+    [](auto... is) { return static_cast<T>(prng::gen_A_to_B(RAND_INTEGER_MIN, RAND_INTEGER_MAX)) / 10; };
+}
+
+static inline void print(const miopen::PoolingDescriptor& filter, bool is_default_layout)
 {
     std::cout << "Pooling: ";
     if(filter.GetMode() == miopenPoolingAverage)
@@ -70,6 +80,7 @@ static inline void print(const miopen::PoolingDescriptor& filter)
     else
         std::cout << "Max";
     std::cout << std::endl;
+    std::cout << "Layout: " << (is_default_layout ? "default" : "transposed") << std::endl;  // TEMPCODE RJS
     std::cout << "Lengths: ";
     miopen::LogRange(std::cout, filter.GetLengths(), ", ") << std::endl;
     std::cout << "Pads: ";
@@ -85,12 +96,23 @@ tensor<T> get_output_tensor(const miopen::PoolingDescriptor& filter, const tenso
 }
 
 template <class T>
+tensor<T> get_big_output_tensor(const miopen::PoolingDescriptor& filter, const tensor<T>& input)
+{
+    auto desc = filter.GetForwardOutputTensor(input.desc);
+    auto lens = desc.GetLengths();
+    lens[0] *= 10;
+    auto big = miopen::TensorDescriptor{desc.GetType(), input.desc.GetLayout_t(), lens, desc.GetStrides()};
+    std::cout << "get_big_output_tensor: " << input.desc.GetLayout_str() << " " << desc.GetLayout_str() << std::endl;
+    return tensor<T>{big};
+}
+
+template <class T>
 struct pooling_operators
 {
     miopen::PoolingDescriptor filter;
     pooling_operators(miopen::PoolingDescriptor f) : filter(f) {}
 
-    double start() const
+    double initialize() const
     {
         if(filter.GetMode() == miopenPoolingMax)
             return std::numeric_limits<T>::lowest();
@@ -111,7 +133,7 @@ struct pooling_operators
         }
     }
 
-    double final(double x, double y)
+    double finalize(double x, double y)
     {
         if(filter.GetMode() == miopenPoolingMax)
             return (x);
@@ -120,6 +142,8 @@ struct pooling_operators
     }
 };
 
+#include <iomanip>
+
 template <int SptDim>
 struct verify_forward_pooling
 {
@@ -127,22 +151,56 @@ struct verify_forward_pooling
     tensor<T>
     cpu(const tensor<T>& input, const miopen::PoolingDescriptor& filter, std::vector<Index>&) const
     {
+        const bool is_default_layout = input.desc.IsDefaultLayout();
+        const int sptl_dim_offset = 2; // is_default_layout ? 2 : 1; TEMPCODE RJS
+        const int chan_dim_offset = 1; // is_default_layout ? 1 : SptDim + 1;
+
         auto out = get_output_tensor(filter, input);
 
         std::array<int, SptDim> in_dim{};
-        std::copy_n(input.desc.GetLengths().begin() + 2, SptDim, in_dim.begin());
+        std::copy_n(input.desc.GetLengths().begin() + sptl_dim_offset, SptDim, in_dim.begin());
         std::array<int, SptDim> strides{};
         std::copy_n(filter.GetStrides().begin(), SptDim, strides.begin());
         std::array<int, SptDim> pads{};
         std::copy_n(filter.GetPads().begin(), SptDim, pads.begin());
         std::array<int, SptDim> kers{};
         std::copy_n(filter.GetLengths().begin(), SptDim, kers.begin());
-        auto op = pooling_operators<T>{filter};
+        auto pooler = pooling_operators<T>{filter};
+
+        // TEMPCODE RJS print input tensor
+        bool printing = true; // in_dim[0]==8 && in_dim[1]==8;
+        if(printing)
+        {
+            auto inlen = input.desc.GetLengths();
+            auto instr = input.desc.GetStrides();
+            std::cout << "CPU in : m" << filter.GetMode() << " t" << input.desc.GetType() << " | ";
+            for(auto dim : inlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : instr) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < inlen[0]; ++nn) {
+                for(int cc = 0; cc < inlen[1]; ++cc) {
+                    for(int hh = 0; hh < inlen[2]; ++hh) {
+                        for(int ww = 0; ww < inlen[3]; ++ww) {
+                            std::cout << std::setw(11) << std::setprecision(5) << input.data[input.desc.GetIndex(nn, cc, hh, ww)] << "  ";
+                        }
+                        std::cout << std::endl;
+                    }
+                }
+            }
+        }
 
         int b_n = out.desc.GetLengths()[0];
-        int k_n = out.desc.GetLengths()[1];
+        int k_n = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
-        std::copy_n(out.desc.GetLengths().begin() + 2, SptDim, out_spatial_len.begin());
+        std::copy_n(out.desc.GetLengths().begin() + sptl_dim_offset, SptDim, out_spatial_len.begin());
 
         auto par_ford_out =
             miopen::unpacker(miopen::prepender(par_ford, b_n, k_n))(out_spatial_len);
@@ -167,27 +225,53 @@ struct verify_forward_pooling
                     ? std::accumulate(kers.begin(), kers.end(), 1, std::multiplies<int>())
                     : std::accumulate(win_sz.begin(), win_sz.end(), 1, std::multiplies<int>());
 
-            double acc = op.start();
+            double acc = pooler.initialize();
             miopen::unpacker(ford)(win_sz)([&](auto... in_spatial_id_pack) {
                 auto in_spatial_id = make_array(in_spatial_id_pack...);
                 std::array<std::size_t, SptDim + 2> idx{};
                 idx[0] = o;
-                idx[1] = w;
+                idx[chan_dim_offset] = w;
 
                 bool in_cmp_idx = true;
                 for(int i = 0; i < SptDim; ++i)
                 {
-                    idx[i + 2] = start_idx[i] + in_spatial_id[i];
-                    in_cmp_idx &= (in_dim[i] > idx[i + 2]);
+                    idx[i + sptl_dim_offset] = start_idx[i] + in_spatial_id[i];
+                    in_cmp_idx &= (in_dim[i] > idx[i + sptl_dim_offset]);
                 }
 
                 if(in_cmp_idx)
                 {
-                    acc = op(acc, input(idx));
+                    acc = pooler(acc, input(idx));
                 }
             });
-            out(o, w, out_spatial_id_pack...) = T(op.final(acc, pool_size));
+            out(o, w, out_spatial_id_pack...) = T(pooler.finalize(acc, pool_size));
         });
+        if(printing)
+        {
+            std::cout << "CPU out: ";
+            auto outlen = out.desc.GetLengths();
+            auto outstr = out.desc.GetStrides();
+            for(auto dim : outlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < outlen[0]; ++nn) {
+                for(int cc = 0; cc < outlen[1]; ++cc) {
+            for(int hh = 0; hh < outlen[2]; ++hh) {
+                for(int ww = 0; ww < outlen[3]; ++ww) {
+                    std::cout << std::setw(11) << std::setprecision(5) << out.data[nn * outstr[0] + cc * outstr[1] + hh * outstr[2] + ww * outstr[3]] << "  ";
+                }
+            std::cout << std::endl;
+            }
+            }
+            }
+        }   // print output tensor
+
         return out;
     }
 
@@ -197,11 +281,16 @@ struct verify_forward_pooling
                   std::vector<Index>& indices) const
     {
         auto&& handle = get_handle();
-        auto out      = get_output_tensor(filter, input);
+        auto out      = get_big_output_tensor(filter, input);   // TEMPCODE RJS
+
         indices.resize(out.data.size(), 0);
 
         auto in_dev  = handle.Write(input.data);
         auto out_dev = handle.Create<T>(out.data.size());
+        auto junk_dev = handle.Create<T>(out.data.size());  // 
+        std::cout << "gpu Sizes: in:" << input.data.size() << " out: " << out.data.size() << " " << out.desc.GetLayout_str()
+        << " " << out.desc.GetLengths()[0]  << " " << out.desc.GetLengths()[1] << " " << out.desc.GetLengths()[2] << " " << out.desc.GetLengths()[3]
+        << " " << out.desc.GetStrides()[0]  << " " << out.desc.GetStrides()[1] << " " << out.desc.GetStrides()[2] << " " << out.desc.GetStrides()[3] << std::endl;
         Workspace wspace{};
         wspace.Write(indices);
 
@@ -215,10 +304,38 @@ struct verify_forward_pooling
                        out_dev.get(),
                        true,
                        wspace.ptr(),
-                       wspace.size());
+                       wspace.size(),
+                       junk_dev.get()); // TEMPCODE RJS
 
         indices  = wspace.Read<std::vector<Index>>();
         out.data = handle.Read<T>(out_dev, out.data.size());
+        if(true)
+        {
+            std::cout << "GPU out: ";
+            auto outlen = out.desc.GetLengths();
+            for(auto dim : outlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            auto outstr = out.desc.GetStrides();
+            for(auto dim : outstr) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < outlen[0]; ++nn) {
+                for(int cc = 0; cc < outlen[1]; ++cc) {
+                    for(int hh = 0; hh < outlen[2]; ++hh) {
+                        for(int ww = 0; ww < outlen[3]; ++ww) {
+                            std::cout << std::setw(11) << std::setprecision(5) << out.data[out.desc.GetIndex(nn, cc, hh, ww)] << "  ";
+                        }
+                        std::cout << std::endl;
+                    }
+                }
+            }
+        }   // print output tensor
         return out;
     }
 
@@ -229,7 +346,7 @@ struct verify_forward_pooling
               const std::vector<Index>&) const
     {
         std::cout << "Forward ";
-        print(filter);
+        print(filter, input.desc.IsDefaultLayout());
         std::cout << "Input tensor: " << input.desc.ToString() << std::endl;
         std::cout << "Output tensor: " << filter.GetForwardOutputTensor(input.desc).ToString()
                   << std::endl;
@@ -248,7 +365,12 @@ struct verify_backward_pooling
                   bool use_global_index,
                   bool verify_index) const
     {
+        const bool is_default_layout = input.desc.IsDefaultLayout();
+        const int sptl_dim_offset = is_default_layout ? 2 : 1;
+        const int chan_dim_offset = is_default_layout ? 1 : SptDim + 1;
+
         auto dinput = input;
+
         std::vector<double> din_vec(input.desc.GetElementSpace(), 0.0);
         CHECK(dout.desc == out.desc);
         std::array<int, SptDim + 2> in_dim{};
@@ -264,9 +386,9 @@ struct verify_backward_pooling
         auto ford_ker = miopen::unpacker(ford)(kers);
 
         int out_n = out.desc.GetLengths()[0];
-        int out_c = out.desc.GetLengths()[1];
+        int out_c = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
-        std::copy_n(out.desc.GetLengths().begin() + 2, SptDim, out_spatial_len.begin());
+        std::copy_n(out.desc.GetLengths().begin() + sptl_dim_offset, SptDim, out_spatial_len.begin());
         auto ford_out = miopen::unpacker(ford)(out_spatial_len);
 
         par_ford(out_n, out_c)([&](int o, int w) {
@@ -281,12 +403,12 @@ struct verify_backward_pooling
                         for(int i = 0; i < SptDim; i++)
                         {
                             std::size_t mx_idx_dim = mx_idx;
-                            mx_idx_dim /= std::accumulate(in_dim.begin() + i + 3,
+                            mx_idx_dim /= std::accumulate(in_dim.begin() + sptl_dim_offset + i + 1,
                                                           in_dim.end(),
                                                           1ULL,
                                                           std::multiplies<std::size_t>());
-                            mx_idx_dim %= in_dim[i + 2];
-                            idx[i + 2] = mx_idx_dim;
+                            mx_idx_dim %= in_dim[i + sptl_dim_offset];
+                            idx[i + sptl_dim_offset] = mx_idx_dim;
                         }
                     }
                     else
@@ -441,7 +563,7 @@ struct verify_backward_pooling
               bool) const
     {
         std::cout << "Backward ";
-        print(filter);
+        print(filter, input.desc.IsDefaultLayout());
         std::cout << "Input tensor: " << input.desc.ToString() << std::endl;
         std::cout << "Output tensor: " << out.desc.ToString() << std::endl;
     }
@@ -462,6 +584,7 @@ struct pooling_driver : test_driver
 #endif
     int verify_indices{};
     int wsidx{};
+    miopenTensorLayout_t layout{};
     std::unordered_map<std::string, miopenIndexType_t> index_type_lookup = {
         {miopen::ToUpper("miopenIndexUint8"), miopenIndexUint8},
         {miopen::ToUpper("miopenIndexUint16"), miopenIndexUint16},
@@ -505,49 +628,92 @@ struct pooling_driver : test_driver
         add(verify_indices, "verify_indices", generate_data({1}));
     }
 
-    template <class Index, int SptDim>
+    template <class Index, int SptlDim>
     void run_impl()
     {
         std::vector<Index> indices{};
-        auto input = tensor<T>{in_shape}.generate(
-            tensor_elem_gen_integer{miopen_type<T>{} == miopenHalf ? 5 : 17});
-        auto out  = verify(verify_forward_pooling<SptDim>{}, input, filter, indices);
-        auto dout = out.first;
-        dout.generate(tensor_elem_gen_integer{2503});
-        verify(verify_backward_pooling<SptDim>{},
-               input,
-               dout,
-               out.first,
-               filter,
-               indices,
-               wsidx != 0,
-               static_cast<bool>(this->verify_indices));
+        auto input = tensor<T>{layout, in_shape};
+        for(auto& v : input.data)   v = gen_value<T>();
+
+        // TEMPCODE RJS print input tensor
+        bool printing = true; // in_dim[0]==8 && in_dim[1]==8;
+        if(printing)
+        {
+            auto inlen = input.desc.GetLengths();
+            auto instr = input.desc.GetStrides();
+            std::cout << "CPU GEN : " << input.desc.GetLayout_str() << "(" << inlen.size() << ") | " << input.data.size() << " | " << input.desc.GetElementSpace() << " | ";
+            for(auto dim : inlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : instr) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < inlen[0]; ++nn) {
+                for(int cc = 0; cc < inlen[1]; ++cc) {
+                    for(int hh = 0; hh < inlen[2]; ++hh) {
+                        for(int ww = 0; ww < inlen[3]; ++ww) {// nn * instr[0] + cc * instr[1] + hh * instr[2] + ww * instr[3]
+                            std::cout << std::setw(11) << std::setprecision(5) << input.data[input.desc.GetIndex(nn, cc, hh, ww)] << "  ";
+                        }
+                    std::cout << std::endl;
+                    }
+                }
+            }
+        }
+
+        auto out  = verify(verify_forward_pooling<SptlDim>{},
+            input,
+            filter,
+            indices);
+
+        // auto dout = out.first;
+        // dout.generate(tensor_elem_gen_integer{2503});
+        // verify(verify_backward_pooling<SptlDim>{},   // TEMPCODE RJS no backward
+        //        input,
+        //        dout,
+        //        out.first,
+        //        filter,
+        //        indices,
+        //        wsidx != 0,
+        //        static_cast<bool>(this->verify_indices));
     }
 
     void run()
     {
+        if(miopen::ToUpper(mode) == "MAX") return;  // TEMPCODE RJS skip all except max, do max only
+
         auto idx_typ = index_type_lookup.at(miopen::ToUpper(index_type));
         auto idx_sz  = sizeof(uint8_t);
-        int spt_dim  = in_shape.size() - 2;
+        int sptl_dim  = in_shape.size() - 2;
         const bool skip_many_configs_with_non_int8_index =
             (dataset_id == 0) && full_set; // Otherwise the default dataset takes too much time.
         const bool wide_dataset = (dataset_id == 2) && full_set;
+
+        // Input dimensions to the driver are always NCHW-style
+        const bool is_default_layout = !(layout == miopenTensorNHWC || layout == miopenTensorNDHWC);
+        std::cout << "################## pooling_driver run layout=" << (int)layout << " is_default=" << (int)is_default_layout << std::endl;
 
         filter = miopen::PoolingDescriptor
         {
             mode_lookup.at(miopen::ToUpper(mode)),
 #if TEST_PADDING_MODE == 1
-                pmode_lookup.at(miopen::ToUpper(pmode)),
+            pmode_lookup.at(miopen::ToUpper(pmode)),
 #else
-                miopenPaddingDefault,
+            miopenPaddingDefault,
 #endif
-                lens, strides, pads
+            lens,
+            strides,
+            pads
         };
 
         filter.SetIndexType(idx_typ);
         filter.SetWorkspaceIndexMode(miopenPoolingWorkspaceIndexMode_t(wsidx));
 
-        if(wsidx == 0 && spt_dim == 3 && filter.GetMode() == miopenPoolingMax && full_set)
+        if(wsidx == 0 && sptl_dim == 3 && filter.GetMode() == miopenPoolingMax && full_set)
         {
             show_command();
             std::cout << "Warning: Config skipped. Workspace index mask mode is not implemented "
@@ -556,7 +722,7 @@ struct pooling_driver : test_driver
             return;
         }
 
-        if(wsidx == 0 && spt_dim == 2 && filter.GetMode() == miopenPoolingMax && wide_dataset)
+        if(wsidx == 0 && sptl_dim == 2 && filter.GetMode() == miopenPoolingMax && wide_dataset)
         {
             show_command();
             std::cout << "Warning: Config skipped. Workspace index mask mode is not implemented "
@@ -587,12 +753,12 @@ struct pooling_driver : test_driver
         /// the "full test" is ran. See:
         /// \ref max_pooling_index_max_restriction
         case miopenIndexUint8: {
-            if((spt_dim == 3 || (spt_dim == 2 && wsidx == 1)) && full_set &&
+            if((sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) && full_set &&
                filter.GetMode() == miopenPoolingMax)
             {
                 show_command();
                 std::cout << "Warning: Config skipped: uint8 index is too small "
-                             "(spt_dim == 3 || (spt_dim == 2 && wsidx == 1)) "
+                             "(sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) "
                              "&& filter.GetMode() == miopenPoolingMax"
                           << std::endl;
                 return;
@@ -600,12 +766,12 @@ struct pooling_driver : test_driver
             break;
         }
         case miopenIndexUint16: {
-            if((spt_dim == 3 || (spt_dim == 2 && wsidx == 1)) && full_set &&
+            if((sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) && full_set &&
                filter.GetMode() == miopenPoolingMax)
             {
                 show_command();
                 std::cout << "Warning: Config skipped: uint16 index is too small "
-                             "(spt_dim == 3 || (spt_dim == 2 && wsidx == 1)) "
+                             "(sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) "
                              "&& filter.GetMode() == miopenPoolingMax"
                           << std::endl;
                 return;
@@ -675,12 +841,12 @@ struct pooling_driver : test_driver
                 }
                 else
                 {
-                    if(num_uint64_case_imgidx > 5 && spt_dim == 2)
+                    if(num_uint64_case_imgidx > 5 && sptl_dim == 2)
                     {
                         show_command();
                         std::cout << "Warning: Config skipped to speed up testing of the "
                                      "default dataset (wsidx != 0) && (num_uint64_case_imgidx > 5 "
-                                     "&& spt_dim == 2)"
+                                     "&& sptl_dim == 2)"
                                   << std::endl;
                         return;
                     }
@@ -692,18 +858,18 @@ struct pooling_driver : test_driver
         }
         }
 
-        auto input_desc = miopen::TensorDescriptor(this->type, in_shape);
+        auto input_desc = miopen::TensorDescriptor(this->type, layout, in_shape);
 
-        if(spt_dim != 2 && spt_dim != 3)
+        if(sptl_dim != 2 && sptl_dim != 3)
         {
             show_command();
             std::cout << "Warning: Config skipped becuse it is not supported " //
-                         "(spt_dim != 2 && spt_dim != 3)"
+                         "(sptl_dim != 2 && sptl_dim != 3)"
                       << std::endl;
             return;
         }
 
-        for(int i = 0; i < spt_dim; i++)
+        for(int i = 0; i < sptl_dim; i++)
         {
             if(lens[i] > (input_desc.GetLengths()[i + 2] + static_cast<uint64_t>(2) * pads[i]))
             {
@@ -733,9 +899,13 @@ struct pooling_driver : test_driver
             }
         }
 
-        std::vector<int> in_dim(input_desc.GetLengths().begin() + 2, input_desc.GetLengths().end());
-        std::vector<int> out_dim(spt_dim);
+        int sptl_index = is_default_layout ? 2 : 1;
+
+        std::vector<int> in_dim(input_desc.GetLengths().begin() + sptl_index,
+            input_desc.GetLengths().begin() + sptl_index + sptl_dim);
+        std::vector<int> out_dim(sptl_dim);
         std::vector<int> ker_dim(filter.GetLengths().begin(), filter.GetLengths().end());
+
 #if TEST_PADDING_MODE == 1
         if(filter.pmode == miopenPaddingSame)
         {
@@ -743,7 +913,7 @@ struct pooling_driver : test_driver
                    return i == 0;
                }))
                 return;
-            for(int i = 0; i < spt_dim; i++)
+            for(int i = 0; i < sptl_dim; i++)
             {
                 filter.pads[i] =
                     ((in_dim[i] % filter.GetStrides()[i] == 0)
@@ -763,7 +933,7 @@ struct pooling_driver : test_driver
                    return i == 0;
                }))
                 return;
-            for(int i = 0; i < spt_dim; i++)
+            for(int i = 0; i < sptl_dim; i++)
             {
                 filter.pads[i] = 0;
 
@@ -778,7 +948,7 @@ struct pooling_driver : test_driver
         switch(filter.GetIndexType())
         {
         case miopenIndexUint8: {
-            if(spt_dim == 3)
+            if(sptl_dim == 3)
             {
                 run_impl<uint8_t, 3>();
             }
@@ -789,7 +959,7 @@ struct pooling_driver : test_driver
             break;
         }
         case miopenIndexUint16: {
-            if(spt_dim == 3)
+            if(sptl_dim == 3)
             {
                 run_impl<uint16_t, 3>();
             }
@@ -800,7 +970,7 @@ struct pooling_driver : test_driver
             break;
         }
         case miopenIndexUint32: {
-            if(spt_dim == 3)
+            if(sptl_dim == 3)
             {
                 run_impl<uint32_t, 3>();
             }
@@ -811,7 +981,7 @@ struct pooling_driver : test_driver
             break;
         }
         case miopenIndexUint64: {
-            if(spt_dim == 3)
+            if(sptl_dim == 3)
             {
                 run_impl<uint64_t, 3>();
             }

@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <cassert>
 #include <numeric>
+#include <strstream>
 #include <vector>
 #include <optional>
 
@@ -163,6 +164,10 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
                      const std::vector<int>& lens_in,
                      const std::vector<int>& strides_in);
     TensorDescriptor(miopenDataType_t t,
+                     miopenTensorLayout_t layout_in,
+                     const std::vector<int>& lens_in,
+                     const std::vector<int>& strides_in);
+    TensorDescriptor(miopenDataType_t t,
                      const std::initializer_list<std::size_t>& lens_in,
                      const std::initializer_list<std::size_t>& strides_in);
     TensorDescriptor(miopenDataType_t t,
@@ -207,6 +212,7 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
     miopenTensorLayout_t GetLayout_t() const;
     static std::string GetLayoutStr(miopenTensorLayout_t layout);
     std::string GetLayout_str() const;
+    bool IsDefaultLayout() const;
 
     std::size_t GetVectorLength() const;
     std::optional<miopenDataType_t> GetCastType() const;
@@ -259,8 +265,10 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
         {
             if(labels.size() != strides.size())
             {
-                MIOPEN_THROW(
-                    "Invalid labels size. Layout labels size must be equavalent to stride size");
+                std::ostringstream oss;
+                oss << "Invalid labels size. labels='" << labels << "', strides size=" << strides.size()
+                    << ". Layout labels size must be equivalent to stride size";
+                MIOPEN_THROW(oss.str().c_str());
             }
 
             // Copy construct the result string from labels. This allocates the space at one go
@@ -276,7 +284,7 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
             if(base_label.size() != strides.size())
             {
                 MIOPEN_THROW(
-                    "Invalid labels size. Layout labels size must be equavalent to stride size");
+                    "Invalid labels size. Layout labels size must be equivalent to stride size");
             }
             auto result = base_label;
             auto p      = find_permutation(lens, strides);
@@ -292,7 +300,29 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
     friend void from_json(const nlohmann::json& j, TensorDescriptor& descriptor);
 
 protected:
-    static miopenTensorLayout_t GetDefaultLayout() { return miopenTensorNCHW; };
+    static miopenTensorLayout_t GetDefaultLayout(unsigned spatial_dims = 2)
+    {
+        switch (spatial_dims)
+        {
+            case 2: return miopenTensorNCHW;
+            case 3: return miopenTensorNCDHW;
+            default:
+                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
+        }
+    };
+
+    static bool IsDefaultLayout(miopenTensorLayout_t layout, unsigned spatial_dims = 2)
+    {
+        switch (spatial_dims)
+        {
+            case 2:
+            case 3:
+                return layout == GetDefaultLayout();
+            default:
+                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
+        }
+    }
+
 
 private:
     TensorDescriptor(miopenDataType_t t,
@@ -330,9 +360,32 @@ template <class TElement>
 constexpr auto GetNCDHW(unsigned spatial_dims, const std::vector<TElement>& data)
 {
     if(spatial_dims == 3)
+    {
+        if(data.size() == 5)        // NCDHW
+            return miopen::tien<5>(data, 1);
+        else if(data.size() == 3)   //   DHW
+            return std::make_tuple(static_cast<TElement>(1), static_cast<TElement>(1), data[0], data[1], data[2]);
+        else
+            MIOPEN_THROW("Invalid data length; must be 5 or 3 with 3 spatial dimensions");
+    }
+    else
+    {
+        if(data.size() == 4)        // NCHW
+            return std::make_tuple(data[0], data[1], static_cast<TElement>(1), data[2], data[3]);
+        else if(data.size() == 2)   //   HW
+            return std::make_tuple(static_cast<TElement>(1), static_cast<TElement>(1), static_cast<TElement>(1), data[0], data[1]);
+        else
+            MIOPEN_THROW("Invalid data length; must be 4 or 2 with 2 spatial dimensions");
+    }
+}
+
+template <class TElement>
+constexpr auto GetNDHWC(unsigned spatial_dims, const std::vector<TElement>& data)
+{
+    if(spatial_dims == 3)
         return miopen::tien<5>(data, 1);
     else
-        return std::make_tuple(data[0], data[1], static_cast<TElement>(1), data[2], data[3]);
+        return std::make_tuple(data[0], static_cast<TElement>(1), data[1], data[2], data[3]);
 }
 
 } // namespace miopen

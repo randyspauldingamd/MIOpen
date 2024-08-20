@@ -288,6 +288,7 @@ set( MIOpen_Source
     solver/mha/mha_solver_forward.cpp
     solver/pooling/forward2d.cpp
     solver/pooling/forwardNaive.cpp
+    solver/pooling/forwardNdNhwcNaive.cpp
     solver/pooling/forwardNd.cpp
     solver/pooling/forwardCk2d.cpp
     solver/pooling/forwardCkNd.cpp
@@ -451,6 +452,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/miopen_type_traits.hpp
         kernels/miopen_utility.hpp
         kernels/neuron.inc
+        kernels/pooling_functions.h
         kernels/rocm_version.inc
         kernels/stride_array.hpp
         kernels/utilities.inc
@@ -499,7 +501,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/MIOpenPoolingBwd.cl
         kernels/MIOpenPoolingBwdND.cl
         kernels/MIOpenPoolingForwardNaive.cl
-        kernels/MIOpenPoolingFwdNDNhwcNaive.cpp
+        kernels/MIOpenPoolingForwardNDNhwcNaive.cpp
         kernels/MIOpenPoolingND.cl
         kernels/MIOpenConv1x1S.cl
         kernels/MIOpenConv1x1J1.cl
@@ -592,6 +594,16 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/xform_bidirect_winograd_out.s
         kernels/UniversalTranspose.cl)
 
+        # TEMPCODE RJS
+    set(MIOPEN_KERNELS
+        kernels/MIOpenPoolingForwardNDNhwcNaive.cpp
+    )
+
+    set(MIOPEN_KERNEL_INCLUDES
+    kernels/bfloat16_dev.hpp
+    kernels/float_types.h
+    kernels/pooling_functions.h
+    )
     # Kernels in development lists.
     # Should be ALWAYS empty in develop branch (at the time of PR merge)
     # Intention: to speed up kernel development rebuild time

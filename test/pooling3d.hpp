@@ -50,6 +50,7 @@ struct pooling3d_driver : pooling_driver<T>
     {
         return pooling3d_shapes::get_3d_pooling_input_shapes();
     }
+
     pooling3d_driver() : pooling_driver<T>()
     {
         this->add(
@@ -58,5 +59,6 @@ struct pooling3d_driver : pooling_driver<T>
         this->add(this->strides, "strides", this->generate_data({{2, 2, 2}, {1, 1, 1}}));
         this->add(this->pads, "pads", this->generate_data({{0, 0, 0}, {1, 1, 1}}));
         this->add(this->wsidx, "wsidx", this->generate_data({1}));
+        this->add(this->layout, "layout", this->generate_data({0, 1}));
     }
 };

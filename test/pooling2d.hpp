@@ -57,7 +57,7 @@ public:
     }
 
     // Dataset 1 is intended for testing of asymmetric configs.
-    static std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 4, 4, 4}}; }
+    static std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 1, 8, 8}}; }
 
     // Dataset 2 is intended for testing of configs with wide window.
     static std::vector<U> get_2d_pooling_input_shapes_wide()
@@ -123,5 +123,6 @@ public:
             {{0, 0}}}));
         // clang-format on
         this->add(this->wsidx, "wsidx", this->generate_data({0, 1}));
+        this->add(this->layout, "layout", this->generate_data({miopenTensorNHWC})); // , miopenTensorNHWC
     }
 };

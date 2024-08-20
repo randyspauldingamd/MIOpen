@@ -275,6 +275,7 @@ void HIPOCProgramImpl::BuildCodeObjectInMemory(const std::string& params,
 #endif
         if(filename.extension() == ".cpp")
         {
+            std::cout << "Compling HIP: '" << filename << "'" << std::endl; // TEMPCODE RJS
             hiprtc::BuildHip(filename.string(), src, params, target, binary);
         }
         else if(filename.extension() == ".s")
