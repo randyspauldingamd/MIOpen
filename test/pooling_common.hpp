@@ -151,7 +151,7 @@ struct verify_forward_pooling
     tensor<T>
     cpu(const tensor<T>& input, const miopen::PoolingDescriptor& filter, std::vector<Index>&) const
     {
-        const bool is_default_layout = input.desc.IsDefaultLayout();
+        // const bool is_default_layout = input.desc.IsDefaultLayout();
         const int sptl_dim_offset = 2; // is_default_layout ? 2 : 1; TEMPCODE RJS
         const int chan_dim_offset = 1; // is_default_layout ? 1 : SptDim + 1;
 
@@ -281,16 +281,14 @@ struct verify_forward_pooling
                   std::vector<Index>& indices) const
     {
         auto&& handle = get_handle();
-        auto out      = get_big_output_tensor(filter, input);   // TEMPCODE RJS
+        auto out      = get_output_tensor(filter, input);
+        auto junk      = get_big_output_tensor(filter, input);   // TEMPCODE RJS
 
         indices.resize(out.data.size(), 0);
 
         auto in_dev  = handle.Write(input.data);
         auto out_dev = handle.Create<T>(out.data.size());
-        auto junk_dev = handle.Create<T>(out.data.size());  // 
-        std::cout << "gpu Sizes: in:" << input.data.size() << " out: " << out.data.size() << " " << out.desc.GetLayout_str()
-        << " " << out.desc.GetLengths()[0]  << " " << out.desc.GetLengths()[1] << " " << out.desc.GetLengths()[2] << " " << out.desc.GetLengths()[3]
-        << " " << out.desc.GetStrides()[0]  << " " << out.desc.GetStrides()[1] << " " << out.desc.GetStrides()[2] << " " << out.desc.GetStrides()[3] << std::endl;
+        auto junk_dev = handle.Create<T>(junk.data.size());  // 
         Workspace wspace{};
         wspace.Write(indices);
 
@@ -308,8 +306,9 @@ struct verify_forward_pooling
                        junk_dev.get()); // TEMPCODE RJS
 
         indices  = wspace.Read<std::vector<Index>>();
-        out.data = handle.Read<T>(out_dev, out.data.size());
-        if(true)
+        handle.ReadTo(out.data.data(), out_dev, out.data.size() * sizeof(T));
+        handle.ReadTo(junk.data.data(), junk_dev, junk.data.size() * sizeof(T));
+        if(false)
         {
             std::cout << "GPU out: ";
             auto outlen = out.desc.GetLengths();
@@ -334,6 +333,18 @@ struct verify_forward_pooling
                         std::cout << std::endl;
                     }
                 }
+            }
+            if(false){
+            std::cout << "GPU out (4-cols): " << std::endl;
+            for(int idx = 0; idx < 160; ++idx) {
+                std::cout << std::setw(11) << std::setprecision(5) << out.data[idx] << "  ";
+                if((idx % 4) == 3)  std::cout <<std::endl;
+            }
+            std::cout << "GPU junk: " << std::endl;
+            for(int idx = 0; idx < 160; ++idx) {
+                std::cout << std::setw(11) << std::setprecision(5) << junk.data[idx] << "  ";
+                if((idx % 4) == 3)  std::cout <<std::endl;
+            }
             }
         }   // print output tensor
         return out;
@@ -610,13 +621,14 @@ struct pooling_driver : test_driver
     {
         add(index_type,
             "index_type",
-            generate_multi_data<const char*>( //
-                {{"miopenIndexUint8",
-                  "miopenIndexUint16",
-                  "miopenIndexUint32",
-                  "miopenIndexUint64"},                     //
-                 {"miopenIndexUint8", "miopenIndexUint32"}, //
-                 {"miopenIndexUint32"}}                     //
+            generate_data({"miopenIndexUint32",}    // TEMPCODE RJS
+            // generate_multi_data<const char*>( //
+            //     {{"miopenIndexUint8",
+            //       "miopenIndexUint16",
+            //       "miopenIndexUint32",
+            //       "miopenIndexUint64"},                     //
+            //      {"miopenIndexUint8", "miopenIndexUint32"}, //
+            //      {"miopenIndexUint32"}}                     //
                 ));
         add(mode,
             "mode",

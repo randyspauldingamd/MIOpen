@@ -177,21 +177,24 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
 
     const auto spatial_dim = is2d ? 2U : 3U;
 
-    size_t all_n, all_c, bot_d, bot_h, bot_w;
+    uint32_t all_n, all_c, bot_d, bot_h, bot_w;
     std::tie(all_n, all_c, bot_d, bot_h, bot_w) = miopen::GetNCDHW(spatial_dim, bot.GetLengths());
+    std::cout << "GetSol: bot_lens " << all_n << " " << all_c << " " << bot_d << " " << bot_h << " " << bot_w << std::endl;
 
     size_t bot_n_stride, bot_d_stride;
-    size_t bot_h_stride, bot_w_stride, bot_c_stride;
+    uint32_t bot_h_stride, bot_w_stride, bot_c_stride;
     std::tie(bot_n_stride, bot_c_stride, bot_d_stride, bot_h_stride, bot_w_stride) =
         miopen::GetNCDHW(spatial_dim, bot.GetStrides());
+std::cout << "GetSol: bot_strides " << bot_n_stride << " " << bot_c_stride << " " << bot_d_stride
+<< " " << bot_h_stride << " " << bot_w_stride  << std::endl;
 
-    size_t a1, a2, top_d, top_h, top_w;
-    std::tie(a1, a2, top_d, top_h, top_w) =
+    uint32_t top_d, top_h, top_w;
+    std::tie(std::ignore, std::ignore, top_d, top_h, top_w) =
         miopen::GetNCDHW(spatial_dim, top.GetLengths());
-    std::cout << "GetSol: top_lens " << a1 << " " << a2 << " " << top_d << " " << top_h << " " << top_w << std::endl;
+    std::cout << "GetSol: top_lens " << top_d << " " << top_h << " " << top_w << std::endl;
 
     size_t top_n_stride, top_d_stride;
-    size_t top_h_stride, top_w_stride, top_c_stride;
+    uint32_t top_h_stride, top_w_stride, top_c_stride;
     std::tie(top_n_stride, top_c_stride, top_d_stride, top_h_stride, top_w_stride) =
         miopen::GetNCDHW(spatial_dim, top.GetStrides());
     // TEMPCODE RJS
@@ -296,8 +299,8 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
         kernel.l_wk.push_back(l2);
 
         // TEMPCODE RJS
-        std::cout << "Kernel dims: " << kernel.g_wk.size() << " " << kernel.g_wk[0] << " " << kernel.g_wk[1] << " " << kernel.g_wk[2]
-        << " | " << kernel.l_wk.size() << " " << kernel.l_wk[0] << " " << kernel.l_wk[1] << " " << kernel.l_wk[2] << std::endl;
+        std::cout << "Kernel dims: g[" << kernel.g_wk.size() << "] " << kernel.g_wk[0] << " " << kernel.g_wk[1] << " " << kernel.g_wk[2]
+        << " | l[" << kernel.l_wk.size() << "] " << kernel.l_wk[0] << " " << kernel.l_wk[1] << " " << kernel.l_wk[2] << std::endl;
         result.construction_params.push_back(kernel);
     }
 
