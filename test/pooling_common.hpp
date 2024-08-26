@@ -102,7 +102,6 @@ tensor<T> get_big_output_tensor(const miopen::PoolingDescriptor& filter, const t
     auto lens = desc.GetLengths();
     lens[0] *= 10;
     auto big = miopen::TensorDescriptor{desc.GetType(), input.desc.GetLayout_t(), lens, desc.GetStrides()};
-    std::cout << "get_big_output_tensor: " << input.desc.GetLayout_str() << " " << desc.GetLayout_str() << std::endl;
     return tensor<T>{big};
 }
 
@@ -143,6 +142,9 @@ struct pooling_operators
 };
 
 #include <iomanip>
+#define MAX_PRINT 16    // TEMPCODE RJS
+#define GPU_JUNK 240
+#define GPU_4COL false
 
 template <int SptDim>
 struct verify_forward_pooling
@@ -168,35 +170,8 @@ struct verify_forward_pooling
         auto pooler = pooling_operators<T>{filter};
 
         // TEMPCODE RJS print input tensor
-        bool printing = true; // in_dim[0]==8 && in_dim[1]==8;
-        if(printing)
-        {
-            auto inlen = input.desc.GetLengths();
-            auto instr = input.desc.GetStrides();
-            std::cout << "CPU in : m" << filter.GetMode() << " t" << input.desc.GetType() << " | ";
-            for(auto dim : inlen) std::cout << std::setw(4) << dim;
-            std::cout << " | ";
-            for(auto str : instr) std::cout << std::setw(4) << str;
-            std::cout << " | ";
-            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
-            std::cout << " | ";
-            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
-            std::cout << " | ";
-            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
-            std::cout << std::endl;
-
-            for(int nn = 0; nn < inlen[0]; ++nn) {
-                for(int cc = 0; cc < inlen[1]; ++cc) {
-                    for(int hh = 0; hh < inlen[2]; ++hh) {
-                        for(int ww = 0; ww < inlen[3]; ++ww) {
-                            std::cout << std::setw(11) << std::setprecision(5) << input.data[input.desc.GetIndex(nn, cc, hh, ww)] << "  ";
-                        }
-                        std::cout << std::endl;
-                    }
-                }
-            }
-        }
-
+        bool printing = in_dim[0]<=MAX_PRINT && in_dim[1]<=MAX_PRINT;
+        if(in_dim.size() > 2) printing &= in_dim[2]<=MAX_PRINT;
         int b_n = out.desc.GetLengths()[0];
         int k_n = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
@@ -262,6 +237,7 @@ struct verify_forward_pooling
 
             for(int nn = 0; nn < outlen[0]; ++nn) {
                 for(int cc = 0; cc < outlen[1]; ++cc) {
+            std::cout << "n=" << nn << " c=" << cc <<std::endl;
             for(int hh = 0; hh < outlen[2]; ++hh) {
                 for(int ww = 0; ww < outlen[3]; ++ww) {
                     std::cout << std::setw(11) << std::setprecision(5) << out.data[nn * outstr[0] + cc * outstr[1] + hh * outstr[2] + ww * outstr[3]] << "  ";
@@ -271,6 +247,33 @@ struct verify_forward_pooling
             }
             }
         }   // print output tensor
+        if(false && printing)
+        {
+            auto inlen = input.desc.GetLengths();
+            auto instr = input.desc.GetStrides();
+            std::cout << "CPU in : m" << filter.GetMode() << " t" << input.desc.GetType() << " | ";
+            for(auto dim : inlen) std::cout << std::setw(4) << dim;
+            std::cout << " | ";
+            for(auto str : instr) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetLengths()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetStrides()) std::cout << std::setw(4) << str;
+            std::cout << " | ";
+            for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
+            std::cout << std::endl;
+
+            for(int nn = 0; nn < inlen[0]; ++nn) {
+                for(int cc = 0; cc < inlen[1]; ++cc) {
+                    for(int hh = 0; hh < inlen[2]; ++hh) {
+                        for(int ww = 0; ww < inlen[3]; ++ww) {
+                            std::cout << std::setw(11) << std::setprecision(5) << input.data[input.desc.GetIndex(nn, cc, hh, ww)] << "  ";
+                        }
+                        std::cout << std::endl;
+                    }
+                }
+            }
+        }
 
         return out;
     }
@@ -307,9 +310,26 @@ struct verify_forward_pooling
 
         indices  = wspace.Read<std::vector<Index>>();
         handle.ReadTo(out.data.data(), out_dev, out.data.size() * sizeof(T));
-        handle.ReadTo(junk.data.data(), junk_dev, junk.data.size() * sizeof(T));
-        if(false)
+        bool printing = input.desc.GetLengths()[2] <= MAX_PRINT && input.desc.GetLengths()[3] <= MAX_PRINT;
+        if(input.desc.GetLengths().size() > 4) printing &= input.desc.GetLengths()[4] <= MAX_PRINT;
+        if(printing)
         {
+            if(GPU_4COL){
+                std::cout << "GPU (8-cols): " << std::endl;
+                for(int idx = 0; idx < GPU_JUNK; ++idx) {
+                    std::cout << std::setw(11) << std::setprecision(5) << out.data[idx] << "  ";
+                    if((idx % 8) == 7)  std::cout <<std::endl;
+                }
+            }
+            if(GPU_JUNK > 0){
+        handle.ReadTo(junk.data.data(), junk_dev, junk.data.size() * sizeof(T));
+                std::cout << "GPU junk: " << std::endl;
+                for(int idx = 0; idx < GPU_JUNK; ++idx) {
+                    std::cout << std::setw(11) << std::setprecision(5) << junk.data[idx] << "  ";
+                    if((idx % 4) == 3)  std::cout <<std::endl;
+                }
+            }
+
             std::cout << "GPU out: ";
             auto outlen = out.desc.GetLengths();
             for(auto dim : outlen) std::cout << std::setw(4) << dim;
@@ -323,28 +343,19 @@ struct verify_forward_pooling
             std::cout << " | ";
             for(auto str : filter.GetPads()) std::cout << std::setw(4) << str;
             std::cout << std::endl;
-
             for(int nn = 0; nn < outlen[0]; ++nn) {
                 for(int cc = 0; cc < outlen[1]; ++cc) {
+                    std::cout << "n=" << nn << " c=" << cc <<std::endl;
                     for(int hh = 0; hh < outlen[2]; ++hh) {
                         for(int ww = 0; ww < outlen[3]; ++ww) {
-                            std::cout << std::setw(11) << std::setprecision(5) << out.data[out.desc.GetIndex(nn, cc, hh, ww)] << "  ";
+                            std::cout << std::setw(11) << std::setprecision(5) << out.data[
+                                nn * outstr[0] + cc * outstr[1] + hh * outstr[2] + ww * outstr[2]
+                                // out.desc.GetIndex(nn, cc, hh, ww)
+                                ] << "  ";
                         }
                         std::cout << std::endl;
                     }
                 }
-            }
-            if(false){
-            std::cout << "GPU out (4-cols): " << std::endl;
-            for(int idx = 0; idx < 160; ++idx) {
-                std::cout << std::setw(11) << std::setprecision(5) << out.data[idx] << "  ";
-                if((idx % 4) == 3)  std::cout <<std::endl;
-            }
-            std::cout << "GPU junk: " << std::endl;
-            for(int idx = 0; idx < 160; ++idx) {
-                std::cout << std::setw(11) << std::setprecision(5) << junk.data[idx] << "  ";
-                if((idx % 4) == 3)  std::cout <<std::endl;
-            }
             }
         }   // print output tensor
         return out;
@@ -621,14 +632,14 @@ struct pooling_driver : test_driver
     {
         add(index_type,
             "index_type",
-            generate_data({"miopenIndexUint32",}    // TEMPCODE RJS
-            // generate_multi_data<const char*>( //
-            //     {{"miopenIndexUint8",
-            //       "miopenIndexUint16",
-            //       "miopenIndexUint32",
-            //       "miopenIndexUint64"},                     //
-            //      {"miopenIndexUint8", "miopenIndexUint32"}, //
-            //      {"miopenIndexUint32"}}                     //
+            // generate_data({"miopenIndexUint32",}    // TEMPCODE RJS
+            generate_multi_data<const char*>( //
+                {{"miopenIndexUint8",
+                  "miopenIndexUint16",
+                  "miopenIndexUint32",
+                  "miopenIndexUint64"},                     //
+                 {"miopenIndexUint8", "miopenIndexUint32"}, //
+                 {"miopenIndexUint32"}}                     //
                 ));
         add(mode,
             "mode",
@@ -648,7 +659,8 @@ struct pooling_driver : test_driver
         for(auto& v : input.data)   v = gen_value<T>();
 
         // TEMPCODE RJS print input tensor
-        bool printing = true; // in_dim[0]==8 && in_dim[1]==8;
+        bool printing = in_shape[0]<=MAX_PRINT && in_shape[1]<=MAX_PRINT;
+        if (in_shape.size() > 2) printing &= in_shape[2]<=MAX_PRINT;
         if(printing)
         {
             auto inlen = input.desc.GetLengths();

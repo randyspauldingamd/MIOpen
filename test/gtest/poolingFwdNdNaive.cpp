@@ -103,7 +103,7 @@ struct layout_data
     void read_gpu_data(miopen::Handle& handle, const miopen::Allocator::ManageDataPtr& ddata)
     {
         check      = tensor<T>{descriptor.GetLengths(), descriptor.GetStrides()};
-        check.data = handle.Read<T>(ddata, check.data.size());
+        handle.ReadTo(check.data.data(), ddata, check.data.size());
     }
 
     tensor<T> check{};
@@ -140,7 +140,7 @@ std::vector<std::string> GetTestCases(const std::string precision)
 
     const std::vector<std::string> test_cases = {
         // clang-format off
-    {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg}
+    {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg}    // TEMPCODE RJS DATASET
         // clang-format on
     };
 
@@ -154,7 +154,7 @@ TEST_P(PoolingFwdFloat, NNT)    // NDNaiveTranspose
     const auto& handle = get_handle();
     if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
     if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
-    // if(!IsTestRunWith("--float"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT!" << std::endl;
+    if(!IsTestRunWith("--float"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT!" << std::endl;
         // Run2dDriver(miopenFloat);   return; // TEMPCODE RJS
     //  && IsTestRunWith("--float")
     if(IsTestSupportedForDevice(handle) && !SkipTest())
@@ -172,7 +172,7 @@ TEST_P(PoolingFwdHalf, NNT)
     const auto& handle = get_handle();
     if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
     if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
-    // if(!IsTestRunWith("--half"))           std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
+    if(!IsTestRunWith("--half"))           std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
 
     if(IsTestSupportedForDevice(handle) && !SkipTest()) //  && IsTestRunWith("--half") TEMPCODE RJS
     {

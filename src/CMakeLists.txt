@@ -603,6 +603,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
     kernels/bfloat16_dev.hpp
     kernels/float_types.h
     kernels/pooling_functions.h
+    include/miopen/pooling/poolingNdNhwcArgs.hpp
     )
     # Kernels in development lists.
     # Should be ALWAYS empty in develop branch (at the time of PR merge)

@@ -30,6 +30,8 @@
 #include <miopen/pooling/invoke_params.hpp>
 #include <miopen/pooling/solvers.hpp>
 
+#include <miopen/pooling/poolingNdNhwcArgs.hpp>
+
 #define WORKAROUND_ISSUE_MIFIN_80 1 // https://github.com/ROCm/MIFin/issues/80
 
 namespace miopen {
@@ -98,7 +100,7 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
 #include <iomanip>  // TEMPCODE RJS
 namespace {
     template<typename T>
-    void printVec(std::string name, const std::vector<T>& vec)
+    void printVec(std::string name, std::vector<T> vec)
     {
          return;
       std::cout << "Vector Printing: " << std::setw(20) << name << "[" << vec.size() << "]: ";
@@ -112,6 +114,7 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
                                  const miopen::pooling::ProblemDescription& problem) const
 {
     auto result = ConvSolution{miopenStatusSuccess};
+    poolingNdNhwcArgs args; 
 
     auto input_dtype  = miopen::GetDataType(problem.GetXDesc().GetType());
     auto output_dtype = miopen::GetDataType(problem.GetYDesc().GetType());
@@ -132,15 +135,34 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     const auto& pads    = pooling.GetPads();
 
     // This also deduces 3D (DHW) parameters from 2D (HW) descriptor.
-    const uint32_t filter_w        = lengths[is2d ? 1 : 2];
-    const uint32_t filter_h        = lengths[is2d ? 0 : 1];
-    const uint32_t filter_d        = is2d ? 1 : lengths[0];
-    const uint32_t filter_w_stride = strides[is2d ? 1 : 2];
-    const uint32_t filter_h_stride = strides[is2d ? 0 : 1];
-    const uint32_t filter_d_stride = is2d ? (filter_h_stride * filter_d) : strides[0];
-    const uint32_t filter_w_pad    = pads[is2d ? 1 : 2];
-    const uint32_t filter_h_pad    = pads[is2d ? 0 : 1];
-    const uint32_t filter_d_pad    = is2d ? 0 : pads[0];
+    uint32_t idx = 0;
+    args.filter_d        = is2d ? 1 : lengths[idx++];
+     args.filter_h        = lengths[idx++];
+     args.filter_w        = lengths[idx++];
+
+    idx = 0;
+     args.filter_d_stride = is2d ? (strides[0]) : strides[idx++];
+     args.filter_h_stride = strides[idx++];
+     args.filter_w_stride = strides[idx++];
+
+    idx = 0;
+    args.filter_d_pad    = is2d ? 0 : pads[idx++];
+    args.filter_h_pad    = pads[idx++];
+    args.filter_w_pad    = pads[idx++];
+    // uint32_t idx = 0;
+    // const uint32_t filter_d        = is2d ? 1 : lengths[idx++];
+    // const uint32_t filter_h        = lengths[idx++];
+    // const uint32_t filter_w        = lengths[idx++];
+
+    // idx = 0;
+    // const uint32_t filter_d_stride = is2d ? (strides[0]) : strides[idx++];
+    // const uint32_t filter_h_stride = strides[idx++];
+    // const uint32_t filter_w_stride = strides[idx++];
+
+    // idx = 0;
+    // const uint32_t filter_d_pad    = is2d ? 0 : pads[idx++];
+    // const uint32_t filter_h_pad    = pads[idx++];
+    // const uint32_t filter_w_pad    = pads[idx++];
 
     const int pooling_method = (pooling.GetMode() == miopenPoolingMax) ? MLO_POOLING_OP_MAX
                                : (pooling.GetMode() == miopenPoolingAverage)
@@ -165,7 +187,7 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     /// requires it because the total number of muls is 4.
 
     // TEMPCODE RJS
-    std::cout << "======================================================================" << std::endl;
+    printVec("======================================================================", std::vector<int>{});
     printVec("bot lengths", bot.GetLengths());
     printVec("bot strides", bot.GetStrides());
     printVec("top lengths", top.GetLengths());
@@ -173,39 +195,35 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     printVec("pool lengths", lengths);
     printVec("pool strides", strides);
     printVec("pool pads", pads);
-    std::cout << "======================================================================" << std::endl;
+    printVec("======================================================================", std::vector<int>{});
 
     const auto spatial_dim = is2d ? 2U : 3U;
 
-    uint32_t all_n, all_c, bot_d, bot_h, bot_w;
-    std::tie(all_n, all_c, bot_d, bot_h, bot_w) = miopen::GetNCDHW(spatial_dim, bot.GetLengths());
-    std::cout << "GetSol: bot_lens " << all_n << " " << all_c << " " << bot_d << " " << bot_h << " " << bot_w << std::endl;
+    // uint32_t all_n, all_c, bot_d, bot_h, bot_w;
+    std::tie(args.all_n, args.all_c, args.bot_d, args.bot_h, args.bot_w) = miopen::GetNCDHW(spatial_dim, bot.GetLengths());
+std::cout << "GetSol: bot_lens " << args.all_n << " " << args.all_c << " " << args.bot_d << " " << args.bot_h << " " << args.bot_w << std::endl;
 
-    size_t bot_n_stride, bot_d_stride;
-    uint32_t bot_h_stride, bot_w_stride, bot_c_stride;
-    std::tie(bot_n_stride, bot_c_stride, bot_d_stride, bot_h_stride, bot_w_stride) =
+    std::tie(args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride) =
         miopen::GetNCDHW(spatial_dim, bot.GetStrides());
-std::cout << "GetSol: bot_strides " << bot_n_stride << " " << bot_c_stride << " " << bot_d_stride
-<< " " << bot_h_stride << " " << bot_w_stride  << std::endl;
+std::cout << "GetSol: bot_strides " << args.bot_n_stride << " " << args.bot_c_stride << " " << args.bot_d_stride
+<< " " << args.bot_h_stride << " " << args.bot_w_stride  << std::endl;
 
-    uint32_t top_d, top_h, top_w;
-    std::tie(std::ignore, std::ignore, top_d, top_h, top_w) =
+    std::tie(std::ignore, std::ignore, args.top_d, args.top_h, args.top_w) =
         miopen::GetNCDHW(spatial_dim, top.GetLengths());
-    std::cout << "GetSol: top_lens " << top_d << " " << top_h << " " << top_w << std::endl;
+std::cout << "GetSol: top_lens " << args.top_d << " " << args.top_h << " " << args.top_w << std::endl;
 
-    size_t top_n_stride, top_d_stride;
-    uint32_t top_h_stride, top_w_stride, top_c_stride;
-    std::tie(top_n_stride, top_c_stride, top_d_stride, top_h_stride, top_w_stride) =
+    std::tie(args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride,args. top_w_stride) =
         miopen::GetNCDHW(spatial_dim, top.GetStrides());
     // TEMPCODE RJS
-    std::cout << "GetSol: top_strides " << top_n_stride << " " << top_c_stride << " "
-    << top_d_stride << " " << top_h_stride << " " << top_w_stride << std::endl;
+std::cout << "GetSol: top_strides " << args.top_n_stride << " " << args.top_c_stride << " "
+    << args.top_d_stride << " " << args.top_h_stride << " " << args.top_w_stride << std::endl;
+
     // Mask data is always NCDHW layout
-    const uint32_t mask_w_stride = 1;
-    const uint32_t mask_h_stride = mask_w_stride * top_w;
-    const uint32_t mask_d_stride = mask_h_stride * top_h;
-    const size_t mask_c_stride   = static_cast<size_t>(mask_d_stride) * top_d;
-    const size_t mask_n_stride   = mask_c_stride * all_c;
+    args.mask_w_stride = 1;
+    args.mask_h_stride = args.mask_w_stride * args.top_w;
+    args.mask_d_stride = args.mask_h_stride * args.top_h;
+    args.mask_c_stride   = static_cast<BIGONE>(args.mask_d_stride) * args.top_d;
+    args.mask_n_stride   = args.mask_c_stride * args.all_c;
 
     /// About optimal grid size:
     /// top D, H, and W are mapped directly onto grid dimensions, except in very small problems
@@ -229,33 +247,39 @@ std::cout << "GetSol: bot_strides " << bot_n_stride << " " << bot_c_stride << " 
     /// workitems because the kernel does not require synchronization.
 
     std::ignore = context;
-    constexpr uint32_t LARGE_C_MAX_ITEMS = 512;
+    constexpr uint32_t MAX_THREADS       = 512;
+    constexpr uint32_t LARGE_C_MAX_ITEMS = MAX_THREADS;
     constexpr uint32_t SMALL_C_MAX_ITEMS = 128;
 
-    auto nd_ = all_n * top_d;
-    auto h_  = top_h;
-    auto w_  = top_w;
-    auto c_  = all_c;
+    auto nd_ = args.all_n * args.top_d;
+    auto h_  = args.top_h;
+    auto w_  = args.top_w;
+    auto c_  = args.all_c;
+std::cout << "nd_ " << nd_ << " h_ " << h_ << " w_ " << w_ << " c_ " << c_ << std::endl;
 
     uint32_t l1 = 1U;
     uint32_t l2 = 1U;
 
     if(c_ > LARGE_C_MAX_ITEMS)
     {
-        auto c2 = c_ / LARGE_C_MAX_ITEMS + 1;
+        auto c2 = (c_ + LARGE_C_MAX_ITEMS - 1) / LARGE_C_MAX_ITEMS;
         c_ = LARGE_C_MAX_ITEMS;
         w_ *= c2;
     }
     // else if(c_ <= SMALL_C_MAX_ITEMS / 2)
     // {
-    //     if(c_ * w_ <= SMALL_C_MAX_ITEMS)
+    //     if(c_ * w_ <= MAX_THREADS)
     //     {
     //         std::swap(l2, w_);
-
-    //         if(c_ * w_ * h_ <= SMALL_C_MAX_ITEMS)
+    //
+    //         if(c_ * w_ * h_ <= MAX_THREADS)
     //         {
     //             std::swap(l1, h_);
     //         }
+    //     }
+    //     else if(c_ * h_ <= MAX_THREADS)
+    //     {
+    //         std::swap(l1, h_);
     //     }
     // }
 
@@ -289,18 +313,20 @@ std::cout << "GetSol: bot_strides " << bot_n_stride << " " << bot_c_stride << " 
         // * 2: layout (NCHW vs NHWC)
         // * 2: 2D and 3D kernels (optimization)
 
-        kernel.g_wk.clear();
-        kernel.g_wk.push_back(g0);
-        kernel.g_wk.push_back(g1);
-        kernel.g_wk.push_back(g2);
+        // l1 = 11;
+        // l2 = 11;
         kernel.l_wk.clear();
         kernel.l_wk.push_back(l0);
         kernel.l_wk.push_back(l1);
         kernel.l_wk.push_back(l2);
+        kernel.g_wk.clear();
+        kernel.g_wk.push_back(g0 * l0);
+        kernel.g_wk.push_back(g1 * l1);
+        kernel.g_wk.push_back(g2 * l2);
 
         // TEMPCODE RJS
-        std::cout << "Kernel dims: g[" << kernel.g_wk.size() << "] " << kernel.g_wk[0] << " " << kernel.g_wk[1] << " " << kernel.g_wk[2]
-        << " | l[" << kernel.l_wk.size() << "] " << kernel.l_wk[0] << " " << kernel.l_wk[1] << " " << kernel.l_wk[2] << std::endl;
+std::cout << "Kernel dims: g[" << kernel.g_wk.size() << "] " << kernel.g_wk[0] << " " << kernel.g_wk[1] << " " << kernel.g_wk[2]
+<< " | l[" << kernel.l_wk.size() << "] " << kernel.l_wk[0] << " " << kernel.l_wk[1] << " " << kernel.l_wk[2] << std::endl;
         result.construction_params.push_back(kernel);
     }
 
@@ -316,16 +342,17 @@ std::cout << "GetSol: bot_strides " << bot_n_stride << " " << bot_c_stride << " 
                 params.workspace,
                 save_index,
                 index_mode,
-                filter_d, filter_h, filter_w,
-                filter_d_stride, filter_h_stride, filter_w_stride,
-                filter_d_pad, filter_h_pad, filter_w_pad,
-                all_n,
-                all_c,
-                bot_d, bot_h, bot_w,
-                bot_n_stride, bot_c_stride, bot_d_stride, bot_h_stride, bot_w_stride,
-                top_d, top_h, top_w,
-                top_n_stride, top_c_stride, top_d_stride, top_h_stride, top_w_stride,
-                mask_n_stride, mask_c_stride, mask_d_stride, mask_h_stride, mask_w_stride);
+                args.filter_d, args.filter_h, args.filter_w,
+                args.filter_d_stride, args.filter_h_stride, args.filter_w_stride,
+                args.filter_d_pad, args.filter_h_pad, args.filter_w_pad,
+                args.all_n,
+                args.all_c,
+                args.bot_d, args.bot_h, args.bot_w,
+                args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride,
+                args.top_d, args.top_h, args.top_w,
+                args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride, args.top_w_stride,
+                args.mask_n_stride, args.mask_c_stride, args.mask_d_stride, args.mask_h_stride, args.mask_w_stride
+            );
         };
     };
 
