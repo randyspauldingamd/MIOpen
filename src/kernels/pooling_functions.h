@@ -40,7 +40,7 @@ typedef MLO_POOLING_INDEX_TYPE index_t;
 #define MLO_POOLING_OP_AVE_INCLUSIVE 3
 
 #ifndef MLO_POOLING_OP_ID
-#define MLO_POOLING_OP_ID 0
+#define MLO_POOLING_OP_ID 1
 #endif
 
 #endif // GUARD_POOLING_FUNCTIONS_H

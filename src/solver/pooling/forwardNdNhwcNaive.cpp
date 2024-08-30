@@ -137,8 +137,8 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     // This also deduces 3D (DHW) parameters from 2D (HW) descriptor.
     uint32_t idx = 0;
     args.filter_d        = is2d ? 1 : lengths[idx++];
-     args.filter_h        = lengths[idx++];
-     args.filter_w        = lengths[idx++];
+    args.filter_h        = lengths[idx++];
+    args.filter_w        = lengths[idx++];
 
     idx = 0;
      args.filter_d_stride = is2d ? (strides[0]) : strides[idx++];

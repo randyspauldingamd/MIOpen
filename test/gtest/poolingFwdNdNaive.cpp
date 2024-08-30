@@ -31,6 +31,7 @@
 #include "get_handle.hpp"
 #include "test_env.hpp"
 
+#include "pooling_testing.hpp"
 #include "pooling2d.hpp"
 
 #include "tensor_holder.hpp"
@@ -140,7 +141,7 @@ std::vector<std::string> GetTestCases(const std::string precision)
 
     const std::vector<std::string> test_cases = {
         // clang-format off
-    {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg}    // TEMPCODE RJS DATASET
+    {"test_pooling2d " + precision + " --all --dataset 0 --limit 0 " + flag_arg}    // TEMPCODE RJS DATASET
         // clang-format on
     };
 
@@ -237,7 +238,7 @@ void Run2dDriver(miopenDataType_t prec)
 }
 
 INSTANTIATE_TEST_SUITE_P(Float, PoolingFwdFloat, testing::Values(GetTestCases("--float")));
-
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwdHalf);
 INSTANTIATE_TEST_SUITE_P(Half, PoolingFwdHalf, testing::Values(GetTestCases("--half")));
 
 #endif

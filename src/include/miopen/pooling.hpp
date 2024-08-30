@@ -113,6 +113,8 @@ struct MIOPEN_EXPORT PoolingDescriptor : miopenPoolingDescriptor
     void SetWorkspaceIndexMode(miopenPoolingWorkspaceIndexMode_t workspace_index);
 
     miopenPoolingMode_t GetMode() const;
+    
+    bool ModeIsAveraging() const;
 
     miopenPaddingMode_t GetPaddingMode() const;
 

@@ -293,6 +293,18 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
         }
     }
 
+    static bool IsDefaultLayout(miopenTensorLayout_t layout, unsigned spatial_dims = 2)
+    {
+        switch (spatial_dims)
+        {
+            case 2:
+            case 3:
+                return layout == GetDefaultLayout();
+            default:
+                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
+        }
+    }
+
     friend MIOPEN_INTERNALS_EXPORT std::ostream& operator<<(std::ostream& stream,
                                                             const TensorDescriptor& t);
 
@@ -310,19 +322,6 @@ protected:
                 MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
         }
     };
-
-    static bool IsDefaultLayout(miopenTensorLayout_t layout, unsigned spatial_dims = 2)
-    {
-        switch (spatial_dims)
-        {
-            case 2:
-            case 3:
-                return layout == GetDefaultLayout();
-            default:
-                MIOPEN_THROW(miopenStatusBadParm, "Spatial dimension count must be 2 or 3.");
-        }
-    }
-
 
 private:
     TensorDescriptor(miopenDataType_t t,

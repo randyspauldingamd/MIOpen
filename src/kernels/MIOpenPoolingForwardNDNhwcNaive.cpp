@@ -53,6 +53,8 @@
 #include "pooling_functions.h"
 #include "poolingNdNhwcArgs.hpp"
 
+// TODO: add ability to decode network string into pooling descriptor or similar for targeted debugging
+
 #if(MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE) || (MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE_INCLUSIVE)
 #define AVERAGE_OPS 1
 #else
@@ -87,45 +89,13 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
                                     ARG_UNUSED_FOR_AVERAGE int save_index,
                                     ARG_UNUSED_FOR_AVERAGE int index_mode,
                                     poolingNdNhwcArgs args
-                                    // UU uint32_t filter_d,
-                                    // UU uint32_t filter_h,
-                                    // UU uint32_t filter_w,
-                                    // UU uint32_t filter_d_stride,
-                                    // UU uint32_t filter_h_stride,
-                                    // UU uint32_t filter_w_stride,
-                                    // UU uint32_t filter_d_pad,
-                                    // UU uint32_t filter_h_pad,
-                                    // UU uint32_t filter_w_pad,
-                                    // uint32_t all_n,
-                                    // UU uint32_t all_c, // TEMPCODE RJS
-                                    // UU uint32_t bot_d,
-                                    // UU uint32_t bot_h,
-                                    // UU uint32_t bot_w,
-                                    // UU BIGONE bot_n_stride,
-                                    // UU uint32_t bot_c_stride,
-                                    // UU BIGONE bot_d_stride,
-                                    // UU uint32_t bot_h_stride,
-                                    // UU uint32_t bot_w_stride,
-                                    // uint32_t top_d,
-                                    // uint32_t top_h,
-                                    // uint32_t top_w,
-                                    // BIGONE top_n_stride,
-                                    // uint32_t top_c_stride,
-                                    // BIGONE top_d_stride,
-                                    // uint32_t top_h_stride,
-                                    // uint32_t top_w_stride,
-                                    // UU ARG_UNUSED_FOR_AVERAGE BIGONE mask_n_stride,
-                                    // UU ARG_UNUSED_FOR_AVERAGE BIGONE mask_c_stride,
-                                    // UU ARG_UNUSED_FOR_AVERAGE uint32_t mask_d_stride,
-                                    // UU ARG_UNUSED_FOR_AVERAGE uint32_t mask_h_stride,
-                                    // UU ARG_UNUSED_FOR_AVERAGE uint32_t mask_w_stride
 )
 {
     const uint32_t nn = blockIdx.x / args.top_d;                          // N=slow index
+    const auto c_base = (blockIdx.z / args.top_w) * blockDim.x;
     const uint32_t td = blockIdx.x % args.top_d;                          // top D=fast index
     const uint32_t th = blockIdx.y;  // top H
-    const uint32_t tw = blockIdx.z % args.all_c;  // top W=fast index
-    const auto c_base = (blockIdx.z / args.all_c) * blockDim.x;
+    const uint32_t tw = blockIdx.z % args.top_w;  // top W=fast index
     if(blockDim.x > args.all_c)
     {
         // // TODO: h, w, or both may be encoded into threadIdx
@@ -210,25 +180,17 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
         log_ptr[idx++] = args.mask_w_stride;
         #endif
         log_ptr[idx++] = -7;
-        while(idx < 64) log_ptr[idx++] = (_FLOAT)0;
     }
 
-    // if(nn >= args.all_n)
-    //     return;
-
-    // if(td >= args.top_d)
-    //     return;
-
-    // if(th >= args.top_h)
-    //     return;
-
-    // if(tw >= args.top_w)
-    //     return;
+    if(nn >= args.all_n) return;
+    if(td >= args.top_d) return;
+    if(th >= args.top_h) return;
+    if(tw >= args.top_w) return;
 
 if(true) {  // TEMPCODE RJS
     const auto int_dstart   = static_cast<int64_t>(td * args.filter_d_stride) - static_cast<int64_t>(args.filter_d_pad);
-    const auto dend           = static_cast<size_t>(min(int_dstart + static_cast<int64_t>(args.filter_d), static_cast<int64_t>(args.bot_d)));
-    const auto dstart         = static_cast<size_t>(max(int_dstart, 0));
+    const auto dend         = static_cast<size_t>(min(int_dstart + static_cast<int64_t>(args.filter_d), static_cast<int64_t>(args.bot_d)));
+    const auto dstart       = static_cast<size_t>(max(int_dstart, 0));
 
     const auto int_hstart   = static_cast<int>(th * args.filter_h_stride) - static_cast<int>(args.filter_h_pad);
     const auto hend             = static_cast<uint32_t>(min(int_hstart + static_cast<int>(args.filter_h), static_cast<int>(args.bot_h)));
@@ -239,7 +201,7 @@ if(true) {  // TEMPCODE RJS
     const auto wstart           = static_cast<uint32_t>(max(int_wstart, 0));
 
     uint32_t cc = c_base + threadIdx.x;
-    // if(cc > args.all_c) return;
+    if(cc >= args.all_c) return;
 
     size_t top_index = 
             nn * args.top_n_stride             // TEMPCODE RJS
@@ -247,9 +209,23 @@ if(true) {  // TEMPCODE RJS
             + (size_t)(td * args.top_d_stride) //
             + (size_t)(th * args.top_h_stride) //
             + (size_t)(tw * args.top_w_stride);
+    size_t junk_idx = 64 + 4 * th;
 if(true) {
-        top_ptr[top_index] = (TO)-1.11111;
-        junk_ptr[64 + top_index] = top_index;
+    if(nn == 0 && cc == 0 && td == 0 && tw < 8 && th == 0)
+    {
+        size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
+            size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
+                size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
+
+        junk_ptr[junk_idx++] = top_index;
+        junk_ptr[junk_idx++] = bot_index;
+        junk_ptr[junk_idx++] = dstart;
+        junk_ptr[junk_idx++] = dend;
+        junk_ptr[junk_idx++] = hstart;
+        junk_ptr[junk_idx++] = hend;
+        junk_ptr[junk_idx++] = wstart;
+        junk_ptr[junk_idx++] = wend;
+    }
 }
 
 #if MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE
@@ -267,18 +243,18 @@ if(true) {
         uint32_t d_save          = 0;
         uint32_t h_save          = 0;
         uint32_t w_save          = 0;
+        uint32_t saved_index     = 0;
 #endif
+
+        size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
         for(size_t bd = dstart; bd < dend; ++bd)
         {
+            size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
             for(uint32_t bh = hstart; bh < hend; ++bh)
             {
+                size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
                 for(uint32_t bw = wstart; bw < wend; ++bw)
                 {
-                    const size_t bot_index = nn * args.bot_n_stride +           //
-                                            cc * args.bot_c_stride +           //
-                                            bd * args.bot_d_stride + //
-                                            static_cast<size_t>(bh * args.bot_h_stride) + //
-                                            static_cast<size_t>(bw * args.bot_w_stride);
 #if AVERAGE_OPS
                     res += static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]);
 #else // MAX
@@ -291,20 +267,34 @@ if(true) {
                             d_save = bd;
                             h_save = bh;
                             w_save = bw;
+                            saved_index = bot_index;
                         }
                     }
+    if(top_index == 1662 || (nn == 0 && cc == 0 && td == 0 && tw == 2 && th == 0))
+    {
+        junk_ptr[junk_idx++] = nn;
+        junk_ptr[junk_idx++] = cc;
+        junk_ptr[junk_idx++] = th;
+        junk_ptr[junk_idx++] = tw;
+        junk_ptr[junk_idx++] = bot_ptr[bot_index];
+        junk_ptr[junk_idx++] = bot_index;
+        junk_ptr[junk_idx++] = res;
+        junk_ptr[junk_idx++] = saved_index;
+    }
 #endif
+                    bot_index += args.bot_w_stride;
                 }
+                bot_ncdh += args.bot_h_stride;
             }
+            bot_ncd += args.bot_d_stride;
         }
 
 #if AVERAGE_OPS
         res *= CVT_FP32_2ACCUM(1.f) / static_cast<_FLOAT_ACCUM>(pool_size);
 #else // MAX
-res *= 1.0; // TEMPCODE RJS fix UNUSED
         if(save_index)
         {
-            index_t res_index = 0;
+            index_t res_index = 5150;
 
             // / Preventing overflow during computation of res_index:
             // / If Index is shorter than uint, then let's perform computation in 32-bit
@@ -316,10 +306,14 @@ res *= 1.0; // TEMPCODE RJS fix UNUSED
 
             if(found)
             {
-                if(index_mode == 1)
-                    res_index = (index_t)(d_save * args.bot_h * args.bot_w //
-                                            + h_save * args.bot_w       //
-                                            + w_save);
+                if(index_mode == 1) // TEMPCODE RJS
+                    res_index = saved_index;
+                    // res_index = (index_t)(              //
+                    //     nn * args.bot_n_stride          //
+                    //     + cc * args.bot_c_stride        //
+                    //     + d_save * args.bot_d_stride    //
+                    //     + h_save * args.bot_h_stride    //
+                    //     + w_save * args.bot_w_stride);
                 else
                     res_index = (index_t)(                                                    //
                         ((d_save - td * args.filter_d_stride + args.filter_d_pad) * args.filter_h * args.filter_w) //
@@ -331,21 +325,13 @@ res *= 1.0; // TEMPCODE RJS fix UNUSED
             const size_t mask_index = nn * args.mask_n_stride             //
                                         + cc * args.mask_c_stride           //
                                         + (size_t)(td * args.mask_d_stride) //
-                                        + (size_t)(tw * args.mask_h_stride) //
-                                        + (size_t)(th * args.mask_w_stride);
+                                        + (size_t)(th * args.mask_h_stride) //
+                                        + (size_t)(tw * args.mask_w_stride);
             mask_ptr[mask_index] = res_index;
         }
 #endif
-        // top_index = nn * args.top_n_stride             //
-        //                         + cc * args.top_c_stride           //
-        //                         + (size_t)(td * args.top_d_stride) //
-        //                         + (size_t)(th * args.top_h_stride) //
-        //                         + (size_t)(tw * args.top_w_stride);
 
-        top_ptr[top_index] = (_FLOAT)res;    // TEMPCODE RJS
-        top_ptr[top_index] = (_FLOAT)1.11111;    // TEMPCODE RJS
-
-        cc += blockDim.x;
+        top_ptr[top_index] = (_FLOAT)res;
 } // TEMPCODE
 }
 
@@ -367,15 +353,5 @@ poolingNdNhwcArgs args
         save_index,
         index_mode,
         args
-        // args.filter_d, args.filter_h, args.filter_w,
-        // args.filter_d_stride, args.filter_h_stride, args.filter_w_stride,
-        // args.filter_d_pad, args.filter_h_pad, args.filter_w_pad,
-        // args.all_n,
-        // args.all_c,
-        // args.bot_d, args.bot_h, args.bot_w,
-        // args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride,
-        // args.top_d, args.top_h, args.top_w,
-        // args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride, args.top_w_stride,
-        // args.mask_n_stride, args.mask_c_stride, args.mask_d_stride, args.mask_h_stride, args.mask_w_stride
     );
 }

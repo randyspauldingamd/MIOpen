@@ -96,6 +96,11 @@ miopenPoolingWorkspaceIndexMode_t PoolingDescriptor::GetWorkspaceIndexMode() con
 
 miopenPoolingMode_t PoolingDescriptor::GetMode() const { return mode; }
 
+bool PoolingDescriptor::ModeIsAveraging() const
+{
+    return mode == miopenPoolingAverage || mode == miopenPoolingAverageInclusive;
+}
+
 miopenPaddingMode_t PoolingDescriptor::GetPaddingMode() const { return (pmode); }
 
 const std::vector<int>& PoolingDescriptor::GetLengths() const { return lens; }
