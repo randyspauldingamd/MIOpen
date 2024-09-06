@@ -38,29 +38,33 @@ public:
     static std::vector<U> get_2d_pooling_input_shapes()
     {
         return {
-                {1, 831, 64, 128},
                 {5, 32, 8, 8},
-                {10, 3, 32, 32},
-                {1, 19, 1024, 2048},
-                {2, 1024, 12, 12},
-                {4, 3, 231, 231},
-                {8, 3, 227, 227},
-                {1, 384, 13, 13},
-                {1, 96, 27, 27},
-                {2, 160, 7, 7},
-                {1, 192, 256, 512},
-                {2, 192, 28, 28},
-                {1, 256, 56, 56},
-                {4, 3, 224, 224},
-                {2, 64, 112, 112},
-                {2, 608, 4, 4},
-                {1, 2048, 11, 11},
-                {1, 16, 4096, 4096}
+                {16, 1, 4096, 4096},
+                {1, 16, 4096, 4096},
+                {1, 1024, 512, 512},
+                {16, 1024, 128, 128}
+                // ,
+                // {1, 832, 64, 128},
+                // {10, 3, 32, 32},
+                // {1, 19, 1024, 2048},
+                // {2, 1024, 12, 12},
+                // {4, 3, 231, 231},
+                // {8, 3, 227, 227},
+                // {1, 384, 13, 13},
+                // {1, 96, 27, 27},
+                // {2, 160, 7, 7},
+                // {1, 192, 256, 512},
+                // {2, 192, 28, 28},
+                // {1, 256, 56, 56},
+                // {4, 3, 224, 224},
+                // {2, 64, 112, 112},
+                // {2, 608, 4, 4},
+                // {1, 2048, 11, 11}
         };
     }
 
     // Dataset 1 is intended for testing of asymmetric configs.
-    static std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 2, 8, 8}}; } // {1, 1, 8, 8}, 
+    static std::vector<U> get_2d_pooling_input_shapes_minimal() { return {{1, 2, 8, 8}, {10, 3, 32, 32}}; } // {1, 1, 8, 8}, 
 
     // Dataset 2 is intended for testing of configs with wide window.
     static std::vector<U> get_2d_pooling_input_shapes_wide()
@@ -91,41 +95,43 @@ private:
 public:
     pooling2d_driver() : pooling_driver<T>()
     {
-        // clang-format off
-        this->add(this->pads, "pads", this->template generate_multi_data<U>({
-            {{0, 0}, {1, 1}}, //
-#if WORKAROUND_ISSUE_1670
-            {{0, 0}}, //
-#else
-            {{0, 0}, {0, 1}, {1, 0}, {1, 1}}, //
-#endif
-            {{0, 0}}}));
-        // clang-format on
-        this->add(this->layout, "layout", this->generate_data({miopenTensorNHWC})); // , miopenTensorNCHW
-        this->add(this->wsidx, "wsidx", this->generate_data({miopenPoolingWorkspaceIndexMask, miopenPoolingWorkspaceIndexImage}));
-        this->add(this->strides,
-                  "strides",
-                  this->template generate_multi_data<U>({{{2, 2}, {1, 1}},                 //
-                                                         {{2, 2}, {2, 1}}, // , {1, 2}, {1, 1}
-                                                         {{1, 1}}}));
 #if TEST_GET_INPUT_TENSOR
         std::set<U> in_dim_set = get_inputs(this->batch_factor);
         std::vector<U> in_dim_vec(in_dim_set.begin(), in_dim_set.end());
         this->add(this->in_shape, "input", this->generate_data(in_dim_vec, {16, 32, 8, 8}));
 #else
-        this->add(
-            this->in_shape,
-            "input",
-            this->template generate_multi_data_limited<U>({get_2d_pooling_input_shapes(),
-                                                           get_2d_pooling_input_shapes_minimal(),
-                                                           get_2d_pooling_input_shapes_wide()},
-                                                          9));
+        this->add(this->in_shape, "input", this->template generate_multi_data_limited<U>({
+                get_2d_pooling_input_shapes(),
+                get_2d_pooling_input_shapes_minimal(),
+                get_2d_pooling_input_shapes_wide()
+            }, 9
+        ));
 #endif
-        this->add(this->lens,
-                  "lens",
-                  this->template generate_multi_data<U>(
-                      {{{2, 2}, {3, 3}},         //
-                       {{2, 2}, {1, 2}, {2, 1}}, //
-                       {{35, 35}, {100, 100}, {255, 255}, {410, 400}}}));
-    }
+        this->add(this->lens, "lens", this->template generate_multi_data<U>({
+                {{2, 2}, {3, 3}},         //
+                {{2, 2}, {1, 2}, {2, 1}}, //
+                {{35, 35}, {100, 100}, {255, 255}, {410, 400}}
+            }
+        ));
+        this->add(this->strides, "strides", this->template generate_multi_data<U>({
+                {{2, 2}, {1, 1}},               //
+                {{2, 2}, {2, 1}, {1, 2}},       //
+                {{1, 1}}
+            }
+        ));
+        // clang-format off
+        this->add(this->pads, "pads", this->template generate_multi_data<U>({
+                {{0, 0}, {1, 1}}, //
+#if WORKAROUND_ISSUE_1670
+                {{0, 0}}, //
+#else
+                {{0, 0}, {0, 1}, {1, 0}, {1, 1}}, //
+#endif
+                {{0, 0}}
+            }
+        ));
+        // clang-format on
+        this->add(this->wsidx, "wsidx", this->generate_data({miopenPoolingWorkspaceIndexMask, miopenPoolingWorkspaceIndexImage}));
+        this->add(this->layout, "layout", this->generate_data({miopenTensorNCHW, miopenTensorNHWC}));
+   }
 };

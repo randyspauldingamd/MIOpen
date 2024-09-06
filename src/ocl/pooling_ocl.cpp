@@ -95,7 +95,7 @@ miopenStatus_t PoolingDescriptor::Forward(Handle& handle,
     auto index_max = get_index_max(GetIndexType());
 
     /// \anchor max_pooling_index_max_restriction
-    /// For kernel implementation max pooling backward pass,
+    /// For kernel implementation max pooling forward pass,
     /// "index_max" means ghost, and thus should not be reached.
     if(mode == miopenPoolingMax && save_index)
     {
@@ -108,13 +108,13 @@ miopenStatus_t PoolingDescriptor::Forward(Handle& handle,
                                             1,
                                             std::multiplies<int>())))
         {
-            MIOPEN_THROW("Index range not enough for max pooling bwd");
+            MIOPEN_THROW("Index range not enough for max pooling fwd");
         }
 
         if(workSpace == nullptr)
         {
             throw std::invalid_argument("workSpace cannot be NULL in Forward Pooling MAX mode when "
-                                        "backward pass is requested");
+                                        "forward pass is requested");
         }
     }
 

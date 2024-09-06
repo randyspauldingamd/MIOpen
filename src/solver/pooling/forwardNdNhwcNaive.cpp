@@ -72,7 +72,7 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
 {
     auto x_type = problem.GetXDesc().GetType();
     auto y_type = problem.GetYDesc().GetType();
-    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf};
+    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf, miopenInt8, miopenFloat8}; // , miopenBFloat16
 
     auto mode = problem.GetPooling().GetMode();
     std::vector<miopenPoolingMode_t> modes {miopenPoolingMax, miopenPoolingAverage, miopenPoolingAverageInclusive};
@@ -88,12 +88,15 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
         && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())          //)
         && (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end());
 
-    std::cout << "%%%%%%%%%% PoolingForwardNDNhwcNaive::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout("NCHW")
-     << "  " << problem.GetYDesc().GetLayout_str() << "->" << problem.GetYDesc().GetLayout("NCHW")
+    // TODO RJS check grid size
+
+    std::cout << "%%%%%%%%%% PoolingForwardNDNhwcNaive::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout(x_layout)
+     << "  " << problem.GetYDesc().GetLayout_str() << "->" << problem.GetYDesc().GetLayout(y_layout)
        << "  "  << (problem.GetDirection() == miopen::pooling::Direction::Forward)
         << (x_type == y_type)
         << (x_layout == y_layout) << (std::find(types.cbegin(), types.cend(), x_type) != types.cend())
         << (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend()) << (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end()) << std::endl;
+
     return app;
 }
 
@@ -141,29 +144,16 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     args.filter_w        = lengths[idx++];
 
     idx = 0;
-     args.filter_d_stride = is2d ? (strides[0]) : strides[idx++];
-     args.filter_h_stride = strides[idx++];
-     args.filter_w_stride = strides[idx++];
+    args.filter_d_stride = is2d ? (strides[0]) : strides[idx++];
+    args.filter_h_stride = strides[idx++];
+    args.filter_w_stride = strides[idx++];
 
     idx = 0;
     args.filter_d_pad    = is2d ? 0 : pads[idx++];
     args.filter_h_pad    = pads[idx++];
     args.filter_w_pad    = pads[idx++];
-    // uint32_t idx = 0;
-    // const uint32_t filter_d        = is2d ? 1 : lengths[idx++];
-    // const uint32_t filter_h        = lengths[idx++];
-    // const uint32_t filter_w        = lengths[idx++];
 
-    // idx = 0;
-    // const uint32_t filter_d_stride = is2d ? (strides[0]) : strides[idx++];
-    // const uint32_t filter_h_stride = strides[idx++];
-    // const uint32_t filter_w_stride = strides[idx++];
-
-    // idx = 0;
-    // const uint32_t filter_d_pad    = is2d ? 0 : pads[idx++];
-    // const uint32_t filter_h_pad    = pads[idx++];
-    // const uint32_t filter_w_pad    = pads[idx++];
-
+    // TODO RJS move pooling_method to shared code
     const int pooling_method = (pooling.GetMode() == miopenPoolingMax) ? MLO_POOLING_OP_MAX
                                : (pooling.GetMode() == miopenPoolingAverage)
                                    ? MLO_POOLING_OP_AVE
@@ -199,24 +189,16 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
 
     const auto spatial_dim = is2d ? 2U : 3U;
 
-    // uint32_t all_n, all_c, bot_d, bot_h, bot_w;
     std::tie(args.all_n, args.all_c, args.bot_d, args.bot_h, args.bot_w) = miopen::GetNCDHW(spatial_dim, bot.GetLengths());
-std::cout << "GetSol: bot_lens " << args.all_n << " " << args.all_c << " " << args.bot_d << " " << args.bot_h << " " << args.bot_w << std::endl;
 
     std::tie(args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride) =
         miopen::GetNCDHW(spatial_dim, bot.GetStrides());
-std::cout << "GetSol: bot_strides " << args.bot_n_stride << " " << args.bot_c_stride << " " << args.bot_d_stride
-<< " " << args.bot_h_stride << " " << args.bot_w_stride  << std::endl;
 
     std::tie(std::ignore, std::ignore, args.top_d, args.top_h, args.top_w) =
         miopen::GetNCDHW(spatial_dim, top.GetLengths());
-std::cout << "GetSol: top_lens " << args.top_d << " " << args.top_h << " " << args.top_w << std::endl;
 
     std::tie(args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride,args. top_w_stride) =
         miopen::GetNCDHW(spatial_dim, top.GetStrides());
-    // TEMPCODE RJS
-std::cout << "GetSol: top_strides " << args.top_n_stride << " " << args.top_c_stride << " "
-    << args.top_d_stride << " " << args.top_h_stride << " " << args.top_w_stride << std::endl;
 
     // Mask data is always NCDHW layout
     args.mask_w_stride = 1;
@@ -236,12 +218,14 @@ std::cout << "GetSol: top_strides " << args.top_n_stride << " " << args.top_c_st
     ///   Currently this limitation is valid for both ROCm HIP and OCL runtimes.
     ///
     /// Selecting the optimal workgroup size is an interesting problem.
-    /// We'll first map c into the workgroup up to the maximum 1024 items. For large C, the
-    /// extra are mapped into the grid dimensions.
-    /// For small C, w and h are mapped into the workgroup dimensions as needed, in that
-    /// order, up to a maximum of 128 workitems (favoring more active blocks over more threads).
-    /// We do permit a partial workgroup when it is not an exact multiple of the wavefront size.
-    /// As said above, remaining H and W are mapped onto the grid dimensions.
+    /// We'll first map N * D to blockIdx.x. H and W are canonically mapped into
+    /// blockIdx.y and z, respectively. C, being the fastest index, is mapped
+    /// into threadIdx.x up to the maximum items. For larger C, the remainder are
+    /// mapped into blockIdx.z.
+    ///
+    /// For small C, we favor more waves over more blocks. W/H are mapped into threadIdx.z/y,
+    /// in that order, fractionally in powers of 2 if possible, up to a maximum
+    /// of 256 workitems. Finally, any remaining W/H are then mapped onto blockIdx.z/y.
     ///
     /// The workgroup size does not have the restrictions imposed by synchronization between
     /// workitems because the kernel does not require synchronization.
@@ -249,14 +233,14 @@ std::cout << "GetSol: top_strides " << args.top_n_stride << " " << args.top_c_st
     std::ignore = context;
     constexpr uint32_t MAX_THREADS       = 512;
     constexpr uint32_t LARGE_C_MAX_ITEMS = MAX_THREADS;
-    constexpr uint32_t SMALL_C_MAX_ITEMS = 128;
+    constexpr uint32_t SMALL_C_TGT_ITEMS = 256;
 
     auto nd_ = args.all_n * args.top_d;
     auto h_  = args.top_h;
     auto w_  = args.top_w;
     auto c_  = args.all_c;
-std::cout << "nd_ " << nd_ << " h_ " << h_ << " w_ " << w_ << " c_ " << c_ << std::endl;
 
+    // These are hip-style indexes (not OCL)
     uint32_t l1 = 1U;
     uint32_t l2 = 1U;
 
@@ -266,22 +250,30 @@ std::cout << "nd_ " << nd_ << " h_ " << h_ << " w_ " << w_ << " c_ " << c_ << st
         c_ = LARGE_C_MAX_ITEMS;
         w_ *= c2;
     }
-    // else if(c_ <= SMALL_C_MAX_ITEMS / 2)
-    // {
-    //     if(c_ * w_ <= MAX_THREADS)
-    //     {
-    //         std::swap(l2, w_);
-    //
-    //         if(c_ * w_ * h_ <= MAX_THREADS)
-    //         {
-    //             std::swap(l1, h_);
-    //         }
-    //     }
-    //     else if(c_ * h_ <= MAX_THREADS)
-    //     {
-    //         std::swap(l1, h_);
-    //     }
-    // }
+    else if(c_ <= SMALL_C_TGT_ITEMS / 2)    // Small C, remap H and W to increase occupancy
+    {
+        if(c_ * w_ < SMALL_C_TGT_ITEMS)
+        {
+            std::swap(l2, w_);              // full w mapped to threads
+        }
+
+        while(w_ > 2 && ((c_ * l2) < SMALL_C_TGT_ITEMS))
+        {
+            w_ = (w_ + 1) / 2;              // partial w mapped to threads (rounddown-safe)
+            l2 *= 2;
+        }
+
+        if(c_ * l2 * h_ < SMALL_C_TGT_ITEMS)
+        {
+            std::swap(l1, h_);              // full h mapped to threads
+        }
+
+        while(h_ > 2 && ((c_ * l1 * l2) < SMALL_C_TGT_ITEMS))
+        {
+            h_ = (h_ + 1 ) / 2;             // partial h mapped to threads (rounddown-safe)
+            l1 *= 2;
+        }
+    }
 
     const auto g0 = nd_;
     const auto g1 = h_;
@@ -313,8 +305,7 @@ std::cout << "nd_ " << nd_ << " h_ " << h_ << " w_ " << w_ << " c_ " << c_ << st
         // * 2: layout (NCHW vs NHWC)
         // * 2: 2D and 3D kernels (optimization)
 
-        // l1 = 11;
-        // l2 = 11;
+        // KernelInfo uses OCL-style indexes
         kernel.l_wk.clear();
         kernel.l_wk.push_back(l0);
         kernel.l_wk.push_back(l1);

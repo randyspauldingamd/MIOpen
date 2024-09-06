@@ -29,6 +29,18 @@
 #ifndef GUARD_MIOPEN_TEST_POOLING_COMMON_HPP
 #define GUARD_MIOPEN_TEST_POOLING_COMMON_HPP
 
+#define DATASET "0"
+
+#include <chrono>
+#include <iomanip>
+namespace {using sc = std::chrono::steady_clock;}
+#undef tomillis
+#define tomillis(__DUR) (0.001 * std::chrono::duration_cast<std::chrono::microseconds>(__DUR).count())
+#undef coutms
+#define coutms(__TOK, __TP) (std::cout << "ms[" << std::setw(16) << __TOK << "]: "          \
+    << std::setw(12) << std::fixed << std::setprecision(3) << tomillis(sc::now() - __TP) << std::endl)
+
+
 #include <gtest/gtest.h>
 #include <array>
 #include <iostream>
@@ -36,6 +48,7 @@
 #include <strstream>
 #include <limits>
 #include <memory>
+#include <miopen/datatype.hpp>
 #include <miopen/logger.hpp>
 #include <miopen/miopen.h>
 #include <miopen/pooling.hpp>
@@ -68,7 +81,7 @@ constexpr int RAND_INTEGER_MIN = -8800;
 
 template <typename T>
 auto gen_value =
-    [](auto... is) { return static_cast<T>(prng::gen_A_to_B(RAND_INTEGER_MIN, RAND_INTEGER_MAX)) / 100; };
+    [](auto... is) { return static_cast<T>(prng::gen_A_to_B(RAND_INTEGER_MIN, RAND_INTEGER_MAX) / 100); };
 }
 
 static inline void print(std::ostringstream& oss, const miopen::PoolingDescriptor& filter, bool is_default_layout)
@@ -97,7 +110,7 @@ tensor<T> get_output_tensor(const miopen::PoolingDescriptor& filter, const tenso
 }
 
 template <class T>
-tensor<T> get_big_output_tensor(const miopen::PoolingDescriptor& filter, const tensor<T>& input)
+tensor<float> get_big_output_tensor(const miopen::PoolingDescriptor& filter, const tensor<T>& input)
 {
     auto desc = filter.GetForwardOutputTensor(input.desc);
     auto lens = desc.GetLengths();
@@ -105,8 +118,8 @@ tensor<T> get_big_output_tensor(const miopen::PoolingDescriptor& filter, const t
         lens[0] *= 2;
     else
         lens[0] *= 10;
-    auto big = miopen::TensorDescriptor{desc.GetType(), input.desc.GetLayout_t(), lens, desc.GetStrides()};
-    return tensor<T>{big};
+    auto big = miopen::TensorDescriptor{miopenFloat, input.desc.GetLayout_t(), lens, desc.GetStrides()};
+    return tensor<float>{big};
 }
 
 template <class T>
@@ -150,7 +163,7 @@ struct pooling_operators
 #define MAX_PRINTING 128    // TEMPCODE RJS
 #define MAX_PRINT 12    // TEMPCODE RJS
 #define MAX_NCD 2
-#define GPU_JUNK 160
+#define GPU_JUNK 0 // 160
 #define PRINT_CPU_IN 0
 #define PRINT_GPU_OUT 0
 #define GPU_4COL false
@@ -194,12 +207,17 @@ namespace {
                     oss << "n= " << nn << " c= " << cc << " d= " << dd << std::endl;
                     for(int hh = 0; hh < olen[3]; ++hh) {
                         for(int ww = 0; ww < olen[4]; ++ww) {
+                            auto index = nn * ostr[0] + cc * ostr[1] + dd * ostr[2] + hh * ostr[3] + ww * ostr[4];
 switch(mode) {
     case 0:
-                            oss << std::setw(11) << std::setprecision(5) << out[nn * ostr[0] + cc * ostr[1] + dd * ostr[2] + hh * ostr[3] + ww * ostr[4]] << "  ";
+    if(std::is_same<T, char>::value || std::is_same<T, int8_t>::value) {
+                            oss << std::setw(11) << std::setprecision(5) << (int16_t)out[index] << "  ";
+    } else {
+                            oss << std::setw(11) << std::setprecision(5) << out[index] << "  ";
+    }
                             break;
     case 1:
-                            oss << std::setw(11) << std::setprecision(5) << nn * ostr[0] + cc * ostr[1] + dd * ostr[2] + hh * ostr[3] + ww * ostr[4] << "  ";
+                            oss << std::setw(11) << std::setprecision(5) << index << "  ";
                             break;
 }    
                         }
@@ -225,6 +243,7 @@ struct verify_forward_pooling
     tensor<T>
     cpu(const tensor<T>& input, const miopen::PoolingDescriptor& filter, std::vector<Index>&) const
     {
+auto st = sc::now();
         auto out = get_output_tensor(filter, input);
 
         std::array<int, SptDim> in_dim{};
@@ -291,7 +310,7 @@ struct verify_forward_pooling
             out(o, w, out_spatial_id_pack...) = T(pooler.finalize(acc, pool_size));
         });
 
-        if(printing)
+        if(PRINT_GPU_OUT && printing)
         {
             PIPE << "CPU out: ";
             auto outlen = out.desc.GetLengths();
@@ -321,7 +340,7 @@ struct verify_forward_pooling
             printClamped(PIPE, input, inlen, instr);
             // printClamped(PIPE, input, inlen, instr, 1);
         }
-
+coutms("cpu", st);
         return out;
     }
 
@@ -404,6 +423,8 @@ struct verify_forward_pooling
                   const miopen::PoolingDescriptor& filter,
                   std::vector<Index>& indices) const
     {
+auto st = sc::now();
+auto write = sc::now();
         auto&& handle = get_handle();
         auto out      = get_output_tensor(filter, input);
         auto junk      = get_big_output_tensor(filter, input);   // TEMPCODE RJS
@@ -412,10 +433,10 @@ struct verify_forward_pooling
 
         auto in_dev  = handle.Write(input.data);
         auto out_dev = handle.Create<T>(out.GetSize());
-        auto junk_dev = handle.Create<T>(junk.GetSize());  // 
+        auto junk_dev = handle.Create<float>(junk.GetSize());  //
         Workspace wspace{};
         wspace.Write(indices);
-
+coutms("GPUwrite", write);
         float alpha = 1, beta = 0;
         filter.Forward(handle,
                        &alpha,
@@ -428,7 +449,21 @@ struct verify_forward_pooling
                        wspace.ptr(),
                        wspace.size(),
                        junk_dev.get()); // TEMPCODE RJS
-
+handle.Finish(); // TEMPCODE RJS
+coutms("gpu1", st);
+        filter.Forward(handle,
+                       &alpha,
+                       input.desc,
+                       in_dev.get(),
+                       &beta,
+                       out.desc,
+                       out_dev.get(),
+                       true,
+                       wspace.ptr(),
+                       wspace.size(),
+                       junk_dev.get()); // TEMPCODE RJS
+handle.Finish(); // TEMPCODE RJS
+auto read = sc::now();
         handle.ReadTo(out.data.data(), out_dev, out.GetDataByteSize());
         wspace.ReadTo(indices);
         bool printing = input.desc.GetLengths()[2] <= MAX_PRINTING && input.desc.GetLengths()[3] <= MAX_PRINTING;
@@ -437,7 +472,7 @@ std::cout << (printing ? "printing output from GPU..." : "skipping GPU print.") 
         if(PRINT_GPU_OUT && printing)
         {
 #if GPU_JUNK > 0
-        handle.ReadTo(junk.data.data(), junk_dev, junk.GetDataByteSize());
+            handle.ReadTo(junk.data.data(), junk_dev, junk.GetDataByteSize());
             if(GPU_4COL){
                 PIPE<< "GPU (8-cols): " << std::endl;
                 for(int idx = 0; idx < GPU_JUNK; ++idx) {
@@ -445,11 +480,11 @@ std::cout << (printing ? "printing output from GPU..." : "skipping GPU print.") 
                     if((idx % 8) == 7)  PIPE <<std::endl;
                 }
             }
-                PIPE << "GPU junk: " << std::endl;
-                for(int idx = 0; idx < GPU_JUNK; ++idx) {
-                    PIPE << std::setw(11) << std::setprecision(5) << junk.data[idx] << "  ";
-                    if((idx % 4) == 3)  PIPE <<std::endl;
-                }
+            PIPE << "GPU junk: " << std::endl;
+            for(int idx = 0; idx < GPU_JUNK; ++idx) {
+                PIPE << std::setw(11) << std::setprecision(5) << junk.data[idx] << "  ";
+                if((idx % 4) == 3)  PIPE <<std::endl;
+            }
 #endif
 
             auto outlen = out.desc.GetLengths();
@@ -480,7 +515,8 @@ std::cout << (printing ? "printing output from GPU..." : "skipping GPU print.") 
             printClamped(PIPE, out, outlen, outstr);
             // printClamped(std::cout, out, outlen, outstr, 1);
         }   // print output tensor
-
+coutms("GPUread", read);
+coutms("gpu", st);
         return out;
     }
 
@@ -535,6 +571,7 @@ struct verify_backward_pooling
         int out_c = out.desc.GetLengths()[chan_dim_offset];
         std::array<int, SptDim> out_spatial_len{};
         std::copy_n(out.desc.GetLengths().begin() + sptl_dim_offset, SptDim, out_spatial_len.begin());
+
         auto ford_out = miopen::unpacker(ford)(out_spatial_len);
 
         par_ford(out_n, out_c)([&](int o, int w) {
@@ -653,6 +690,7 @@ struct verify_backward_pooling
             }
             dinput(in_id_pack...) = din_vec.at(din_idx);
         });
+
         return dinput;
     }
 
@@ -756,24 +794,27 @@ struct pooling_driver : test_driver
     {
         add(index_type,
             "index_type",
-            generate_data({"miopenIndexUint32"}    // TEMPCODE RJS
-            // generate_multi_data<const char*>( //
-            //     {{"miopenIndexUint8",
-            //       "miopenIndexUint16",
-            //       "miopenIndexUint32",
-            //       "miopenIndexUint64"},                     //
-            //      {"miopenIndexUint8", "miopenIndexUint32"}, //
-            //      {"miopenIndexUint32"}}                     //
+            // generate_data({"miopenIndexUint32"}    // TEMPCODE RJS
+            generate_multi_data<const char*>( //
+                {{"miopenIndexUint32",
+                  "miopenIndexUint8"
+                  ,
+                  "miopenIndexUint16",
+                  "miopenIndexUint64"
+                  },                     //
+                 {"miopenIndexUint8", "miopenIndexUint32"}, //
+                 {"miopenIndexUint32"}}                     //
                 ));
         add(mode_str,
             "mode_str",
             generate_data(
-                {"miopenPoolingMax", "miopenPoolingAverage", "miopenPoolingAverageInclusive"})); // 
+                {"miopenPoolingMax", "miopenPoolingAverage"})); // , "miopenPoolingAverageInclusive"
 #if TEST_PADDING_MODE == 1
         add(pmode, "pmode", generate_data({"default", "same", "valid"}));
 #endif
         add(verify_indices, "verify_indices", generate_data({1}));
     }
+
 
     template <class Index, int SptlDim>
     void run_impl()
@@ -812,11 +853,12 @@ struct pooling_driver : test_driver
         //         }
         //     }
         // }
-
+auto st = sc::now();
         auto out  = verify(verify_forward_pooling<SptlDim>{},
             input,
             filter,
             indices);
+            coutms("verifyfwd", st);
 #ifdef BACKWARD
         auto dout = out.first;
         dout.generate(tensor_elem_gen_integer{2503});
@@ -831,24 +873,42 @@ struct pooling_driver : test_driver
 #endif
     }
 
+
+#define RETURN coutms("Run", st); return
+
     void run()
     {
-        std::cout << "\n############   Run # " << std::setw(6) << num_all_case++ << " : ";
-        if(MAX_ALL_CASES && num_all_case > MAX_ALL_CASES)
+auto st = sc::now();
+        const bool is_default_layout = miopen::TensorDescriptor::IsDefaultLayout(layout); // TEMPCODE RJS
+
         {
-            std::cout << " skipped due to MAX_ALL_CASES=" << MAX_ALL_CASES << " : ";
+            bool skip = false;
+            std::ostringstream oss;
+
+            if(MAX_ALL_CASES && num_all_case > MAX_ALL_CASES)
+            {
+                skip = true;
+                oss << " : skipped due to MAX_ALL_CASES=" << MAX_ALL_CASES;
+            }
+            if(this->dry_run)
+            {
+                skip = true;
+                oss << " : skipped due to dry_run";
+            }
+            if(is_default_layout && (this->type == miopenInt8 || this->type == miopenFloat8))
+            {
+                skip = true;
+                oss << " : skipped, no solvers for datatype " << this->type << " and default layouts";
+            }
+
+            std::cout << "\n############   Run " << (skip ? " " : "#") << " " << std::setw(6) << num_all_case++ << " : ";
             show_command();
-            return;
-        }
-        else if(this->dry_run)
-        {
-            std::cout << " skipped due to dry_run : ";
-            show_command();
-            return;
-        }
-        else
-        {
-            show_command();
+
+            if(skip)
+            {
+                std::cout << "-- " << oss.str() << std::endl;
+                RETURN;
+            }
         }
 
         int sptl_dim = static_cast<int>(in_shape.size()) - 2;
@@ -856,15 +916,13 @@ struct pooling_driver : test_driver
         {
             std::cout << "Warning: Config skipped due to invalid dimensions. 'in_shape' must be in NCHW or NCDHW form."
                       << std::endl;
-            return;
+            RETURN;
         }
 
         // To simplify launching, input dimensions to the driver are always default layout. Desire to
         // test non-default layouts is communicated exclusively via 'layout'.
-        // const bool is_default_layout = miopen::TensorDescriptor::IsDefaultLayout(layout); // TEMPCODE RJS
 
         auto mode = mode_lookup.at(miopen::ToUpper(mode_str));
-        if(mode != miopenPoolingMax) return;  // TEMPCODE RJS skip all except max, do max only
 
         auto pad_mode = miopenPaddingDefault;
 #if TEST_PADDING_MODE
@@ -895,7 +953,7 @@ struct pooling_driver : test_driver
             std::cout << "Warning: Config skipped. Workspace index mask mode is not implemented "
                          "yet in 3D max pooling solvers."
                       << std::endl;
-            return;
+            RETURN;
         }
 
         if(mask_idx && sptl_dim == 2 && filter.GetMode() == miopenPoolingMax && wide_dataset)
@@ -903,7 +961,7 @@ struct pooling_driver : test_driver
             std::cout << "Warning: Config skipped. Workspace index mask mode is not implemented "
                          "yet in 2D max backward solvers that support wide pooling window."
                       << std::endl;
-            return;
+            RETURN;
         }
 
         if(mask_idx && filter.ModeIsAveraging())
@@ -914,7 +972,24 @@ struct pooling_driver : test_driver
                          "skip average pooling configs when (wsidx == 0). "
                          "Please make sure that dataset includes counterparts with (wsidx == 1)."
                       << std::endl;
-            return;
+            RETURN;
+        }
+
+        // index size filter
+        if(filter.GetMode() == miopenPoolingMax)
+        {
+            auto index_max = miopen::get_index_max(filter.GetIndexType());
+            auto index_needed = mask_idx ?
+                std::accumulate(lens.begin(), lens.end(), 1, std::multiplies<int>()) :
+                std::accumulate(in_shape.begin() + 2, in_shape.end(), 1, std::multiplies<int>());
+
+            if(index_max <= index_needed)
+            {
+                std::cout << "Warning: Config skipped: index mode " << filter.GetWorkspaceIndexMode()
+                    << " type " << filter.GetIndexType() << " is too small. max="
+                    << index_max << ", needed=" << index_needed << std::endl;
+                RETURN;
+            }
         }
 
         switch(idx_typ)
@@ -931,7 +1006,7 @@ struct pooling_driver : test_driver
                              "(sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) "
                              "&& filter.GetMode() == miopenPoolingMax"
                           << std::endl;
-                return;
+                RETURN;
             }
             break;
         }
@@ -943,7 +1018,7 @@ struct pooling_driver : test_driver
                              "(sptl_dim == 3 || (sptl_dim == 2 && wsidx == 1)) "
                              "&& filter.GetMode() == miopenPoolingMax"
                           << std::endl;
-                return;
+                RETURN;
             }
             if(skip_many_configs_with_non_int8_index)
             {
@@ -953,7 +1028,7 @@ struct pooling_driver : test_driver
                     std::cout << "Warning: Config skipped for the default dataset to speed "
                                  "up testing (num_uint16_case > 5)"
                               << std::endl;
-                    return;
+                    RETURN;
                 }
                 ++num_uint16_case;
             }
@@ -971,7 +1046,7 @@ struct pooling_driver : test_driver
                         std::cout << "Warning: Config skipped for the default dataset to speed up "
                                      "testing (wsidx == 0 && num_uint32_case > 5)"
                                   << std::endl;
-                        return;
+                        RETURN;
                     }
                     ++num_uint32_case;
                 }
@@ -982,7 +1057,7 @@ struct pooling_driver : test_driver
                         std::cout << "Warning: Config skipped for the default dataset to speed up "
                                      "testing (wsidx != 0 && num_uint32_case_imgidx > 5)"
                                   << std::endl;
-                        return;
+                        RETURN;
                     }
                     ++num_uint32_case_imgidx;
                 }
@@ -1000,7 +1075,7 @@ struct pooling_driver : test_driver
                         std::cout << "Warning: Config skipped for the default dataset to speed up "
                                      "testing (wsidx == 0) && (num_uint64_case > 5)"
                                   << std::endl;
-                        return;
+                        RETURN;
                     }
                     ++num_uint64_case;
                 }
@@ -1012,7 +1087,7 @@ struct pooling_driver : test_driver
                                      "default dataset (wsidx != 0) && (num_uint64_case_imgidx > 5 "
                                      "&& sptl_dim == 2)"
                                   << std::endl;
-                        return;
+                        RETURN;
                     }
                     ++num_uint64_case_imgidx;
                 }
@@ -1031,7 +1106,7 @@ struct pooling_driver : test_driver
                 std::cout << "Warning: Config skipped becuse it is invalid "
                              "(lens[i] > (input_desc.GetLengths()[i + 2] + 2 * pads[i]))"
                           << std::endl;
-                return;
+                RETURN;
             }
         }
 
@@ -1048,7 +1123,7 @@ struct pooling_driver : test_driver
                 std::cout << "Config skipped because it requires " << total_mem
                           << " Bytes to write all necessary tensors to GPU. GPU has " << device_mem
                           << " Bytes of memory." << std::endl;
-                return;
+                RETURN;
             }
         }
 
@@ -1143,6 +1218,7 @@ struct pooling_driver : test_driver
             break;
         }
         }
+coutms("Run", st);
     }
 };
 

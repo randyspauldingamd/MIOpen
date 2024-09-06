@@ -83,8 +83,8 @@ NetworkConfig ProblemDescription::MakeNetworkConfig() const
         ss << "_dyd" << get_vect_config(dyDesc.GetLengths());
         ss << "_dys" << get_vect_config(dyDesc.GetStrides());
     }   // TEMPCODE RJS
-    std::cout << "\n************** xDesc layout: " << xDesc.GetLayout_str() << (xDesc.IsDefaultLayout() ? "" : " (not default)") << " *************************" << std::endl;
-    ss << "_l" << (xDesc.IsDefaultLayout() ? 0 : 1);
+    std::cout << "\n************** xDesc layout: " << xDesc.GetLayout_str() << " (" << static_cast<int>(xDesc.GetLayout_t()) << (xDesc.IsDefaultLayout() ? ")" : " not default)") << " *************************" << std::endl;
+    ss << "_l" << static_cast<int>(xDesc.GetLayout_t());
 std::cout << "               " << ss.str() << std::endl;
     return NetworkConfig{ss.str()};
 }

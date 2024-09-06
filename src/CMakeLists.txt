@@ -597,11 +597,17 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         # TEMPCODE RJS
     set(MIOPEN_KERNELS
         kernels/MIOpenPoolingForwardNDNhwcNaive.cpp
+        kernels/MIOpenPooling.cl
+        kernels/MIOpenPoolingBwd.cl
+        kernels/MIOpenPoolingBwdND.cl
+        kernels/MIOpenPoolingForwardNaive.cl
+        kernels/MIOpenPoolingND.cl
     )
 
     set(MIOPEN_KERNEL_INCLUDES
     kernels/bfloat16_dev.hpp
     kernels/float_types.h
+    kernels/miopen_cstdint.hpp
     kernels/pooling_functions.h
     include/miopen/pooling/poolingNdNhwcArgs.hpp
     )

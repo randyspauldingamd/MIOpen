@@ -39,9 +39,6 @@
 #define CVT_FP32_2ACCUM(x) (x)
 #endif
 
-#define _FLOAT float
-#define _FLOAT_ACCUM _FLOAT
-
 #ifndef MIOPEN_DONT_USE_HIP_RUNTIME_HEADERS
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
@@ -71,6 +68,22 @@
 #endif
 
 #include "float_types.h"
+#include "miopen_cstdint.hpp"
+
+#if MIOPEN_USE_INT8 == 1
+    #define _FLOAT char
+    #if !AVERAGE_OPS
+        #ifndef FLT_MAX
+        #define MAX_VAL 127 /* max value */
+        #else
+        #define MAX_VAL FLT_MAX
+        #endif
+    #endif
+#else
+    #define _FLOAT float
+#endif
+#define _FLOAT_ACCUM _FLOAT
+
 #endif // TEMPCODE
 
 #if AVERAGE_OPS
@@ -91,16 +104,31 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
                                     poolingNdNhwcArgs args
 )
 {
-    const uint32_t nn = blockIdx.x / args.top_d;                          // N=slow index
-    const auto c_base = (blockIdx.z / args.top_w) * blockDim.x;
-    const uint32_t td = blockIdx.x % args.top_d;                          // top D=fast index
-    const uint32_t th = blockIdx.y;  // top H
-    const uint32_t tw = blockIdx.z % args.top_w;  // top W=fast index
-    if(blockDim.x > args.all_c)
-    {
-        // // TODO: h, w, or both may be encoded into threadIdx
-        // if(top_h > 1 && blockDim.y == 1)    
-    }
+    // naming: caps=count, lowercase=index, <canonical>_<modified>
+    const uint32_t nd = blockIdx.x;
+    const uint32_t h_ = blockIdx.y;
+    const uint32_t w_c = blockIdx.z;
+    const uint32_t w_ = w_c % args.top_w;                               // CAN w=fast index
+
+    const uint32_t C_WH = blockDim.x;
+    const uint32_t _H = blockDim.y;
+    const uint32_t _W = blockDim.z;
+
+    const uint32_t c  = threadIdx.x;
+    const uint32_t _h = threadIdx.y;
+    const uint32_t _w = threadIdx.z;
+
+    const uint32_t nn = nd / args.top_d;                                // n=slow index
+    const uint32_t cc = (w_c / args.top_w) * C_WH + c;                  // c=slow index (lg-C)
+    const uint32_t td = nd % args.top_d;                                // top d=fast index
+    const uint32_t th = h_ * _H + _h;                                   // top h: blockIdx is slow (sm-C)
+    const uint32_t tw = w_ * _W + _w;                                   // top w: blockIdx is slow (sm-C)
+
+    if(nn >= args.all_n) return;
+    if(td >= args.top_d) return;
+    if(th >= args.top_h) return;
+    if(tw >= args.top_w) return;
+    if(cc >= args.all_c) return;
 
     auto log_ptr = junk_ptr;
     if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 &&  threadIdx.y == 0 &&  threadIdx.z == 0)
@@ -182,12 +210,6 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
         log_ptr[idx++] = -7;
     }
 
-    if(nn >= args.all_n) return;
-    if(td >= args.top_d) return;
-    if(th >= args.top_h) return;
-    if(tw >= args.top_w) return;
-
-if(true) {  // TEMPCODE RJS
     const auto int_dstart   = static_cast<int64_t>(td * args.filter_d_stride) - static_cast<int64_t>(args.filter_d_pad);
     const auto dend         = static_cast<size_t>(min(int_dstart + static_cast<int64_t>(args.filter_d), static_cast<int64_t>(args.bot_d)));
     const auto dstart       = static_cast<size_t>(max(int_dstart, 0));
@@ -200,17 +222,15 @@ if(true) {  // TEMPCODE RJS
     const auto wend             = static_cast<uint32_t>(min(int_wstart + static_cast<int>(args.filter_w), static_cast<int>(args.bot_w)));
     const auto wstart           = static_cast<uint32_t>(max(int_wstart, 0));
 
-    uint32_t cc = c_base + threadIdx.x;
-    if(cc >= args.all_c) return;
-
     size_t top_index = 
-            nn * args.top_n_stride             // TEMPCODE RJS
-            + cc * args.top_c_stride           //
-            + (size_t)(td * args.top_d_stride) //
-            + (size_t)(th * args.top_h_stride) //
-            + (size_t)(tw * args.top_w_stride);
+            nn * args.top_n_stride +            //
+            cc * args.top_c_stride +            //
+            td * args.top_d_stride +            //
+            th * args.top_h_stride +            //
+            tw * args.top_w_stride;
+
+#if false
     size_t junk_idx = 64 + 4 * th;
-if(true) {
     if(nn == 0 && cc == 0 && td == 0 && tw < 8 && th == 0)
     {
         size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
@@ -226,113 +246,101 @@ if(true) {
         junk_ptr[junk_idx++] = wstart;
         junk_ptr[junk_idx++] = wend;
     }
-}
+#endif
 
 #if MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE
-        uint32_t pool_size = (dend - dstart) * (hend - hstart) * (wend - wstart);
-        pool_size       = (pool_size == 0) ? 1 : pool_size;
+    uint32_t pool_size = (dend - dstart) * (hend - hstart) * (wend - wstart);
+    pool_size       = (pool_size == 0) ? 1 : pool_size;
 #elif MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE_INCLUSIVE
-        const uint32_t pool_size = args.filter_d * args.filter_h * args.filter_w;
+    const uint32_t pool_size = args.filter_d * args.filter_h * args.filter_w;
 #endif
 
 #if AVERAGE_OPS
-        _FLOAT_ACCUM res = (_FLOAT_ACCUM)(0);
+    _FLOAT_ACCUM res = (_FLOAT_ACCUM)(0);
 #else // MAX
-        _FLOAT_ACCUM res     = (_FLOAT_ACCUM)(-MAX_VAL_ACCUM);
-        bool found           = false; // May remain false if bot contains only NaNs/-INFs.
-        uint32_t d_save          = 0;
-        uint32_t h_save          = 0;
-        uint32_t w_save          = 0;
-        uint32_t saved_index     = 0;
+    _FLOAT_ACCUM res     = (_FLOAT_ACCUM)(-MAX_VAL_ACCUM);
+    bool found           = false; // May remain false if bot contains only NaNs/-INFs.
+    uint32_t d_save          = 0;
+    uint32_t h_save          = 0;
+    uint32_t w_save          = 0;
+    uint32_t saved_index     = 0;
 #endif
 
-        size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
-        for(size_t bd = dstart; bd < dend; ++bd)
-        {
-            size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
-            for(uint32_t bh = hstart; bh < hend; ++bh)
-            {
-                size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
-                for(uint32_t bw = wstart; bw < wend; ++bw)
-                {
-#if AVERAGE_OPS
-                    res += static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]);
-#else // MAX
-                    if(static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]) > res)
-                    {
-                        res = bot_ptr[bot_index];
-                        if(save_index)
-                        {
-                            found  = true;
-                            d_save = bd;
-                            h_save = bh;
-                            w_save = bw;
-                            saved_index = bot_index;
-                        }
-                    }
-    if(top_index == 1662 || (nn == 0 && cc == 0 && td == 0 && tw == 2 && th == 0))
+    size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
+    for(size_t bd = dstart; bd < dend; ++bd)
     {
-        junk_ptr[junk_idx++] = nn;
-        junk_ptr[junk_idx++] = cc;
-        junk_ptr[junk_idx++] = th;
-        junk_ptr[junk_idx++] = tw;
-        junk_ptr[junk_idx++] = bot_ptr[bot_index];
-        junk_ptr[junk_idx++] = bot_index;
-        junk_ptr[junk_idx++] = res;
-        junk_ptr[junk_idx++] = saved_index;
+        size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
+        for(uint32_t bh = hstart; bh < hend; ++bh)
+        {
+            size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
+            for(uint32_t bw = wstart; bw < wend; ++bw)
+            {
+#if AVERAGE_OPS
+                res += static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]);
+#else // MAX
+                if(static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]) > res)
+                {
+                    res = bot_ptr[bot_index];
+                    if(save_index)
+                    {
+                        found  = true;
+                        d_save = bd;
+                        h_save = bh;
+                        w_save = bw;
+                        saved_index = bot_index;
+                    }
+                }
+#endif
+                bot_index += args.bot_w_stride;
+            }
+            bot_ncdh += args.bot_h_stride;
+        }
+        bot_ncd += args.bot_d_stride;
+    }
+
+#if AVERAGE_OPS
+    res /= static_cast<_FLOAT_ACCUM>(pool_size);
+#else // MAX
+    if(save_index)
+    {
+        index_t res_index = 5150;
+
+        // / Preventing overflow during computation of res_index:
+        // / If Index is shorter than uint, then let's perform computation in 32-bit
+        // / domain and then convert to narrower Index. That would reduce the probability of
+        // / overflow. If Index is wider then 32 bits, then it seems like it is better to
+        // / convert to Index type before multiplication. However this is not actually
+        // / necessary, see \ref multiply_dims_overflow_assumption. Let's always compute in
+        // / 32 bits and then convert.
+
+        if(found)
+        {
+            if(index_mode == 1) // TEMPCODE RJS
+                res_index = saved_index;
+                // res_index = (index_t)(              //
+                //     nn * args.bot_n_stride          //
+                //     + cc * args.bot_c_stride        //
+                //     + d_save * args.bot_d_stride    //
+                //     + h_save * args.bot_h_stride    //
+                //     + w_save * args.bot_w_stride);
+            else
+                res_index = (index_t)(                                                    //
+                    ((d_save - td * args.filter_d_stride + args.filter_d_pad) * args.filter_h * args.filter_w) //
+                    + ((h_save - th * args.filter_h_stride + args.filter_h_pad) * args.filter_w)          //
+                    + (w_save - tw * args.filter_w_stride + args.filter_w_pad)                       //
+                );
+        }
+
+        const size_t mask_index = nn * args.mask_n_stride             //
+                                    + cc * args.mask_c_stride           //
+                                    + (size_t)(td * args.mask_d_stride) //
+                                    + (size_t)(th * args.mask_h_stride) //
+                                    + (size_t)(tw * args.mask_w_stride);
+        mask_ptr[mask_index] = res_index;
     }
 #endif
-                    bot_index += args.bot_w_stride;
-                }
-                bot_ncdh += args.bot_h_stride;
-            }
-            bot_ncd += args.bot_d_stride;
-        }
 
-#if AVERAGE_OPS
-        res *= CVT_FP32_2ACCUM(1.f) / static_cast<_FLOAT_ACCUM>(pool_size);
-#else // MAX
-        if(save_index)
-        {
-            index_t res_index = 5150;
-
-            // / Preventing overflow during computation of res_index:
-            // / If Index is shorter than uint, then let's perform computation in 32-bit
-            // / domain and then convert to narrower Index. That would reduce the probability of
-            // / overflow. If Index is wider then 32 bits, then it seems like it is better to
-            // / convert to Index type before multiplication. However this is not actually
-            // / necessary, see \ref multiply_dims_overflow_assumption. Let's always compute in
-            // / 32 bits and then convert.
-
-            if(found)
-            {
-                if(index_mode == 1) // TEMPCODE RJS
-                    res_index = saved_index;
-                    // res_index = (index_t)(              //
-                    //     nn * args.bot_n_stride          //
-                    //     + cc * args.bot_c_stride        //
-                    //     + d_save * args.bot_d_stride    //
-                    //     + h_save * args.bot_h_stride    //
-                    //     + w_save * args.bot_w_stride);
-                else
-                    res_index = (index_t)(                                                    //
-                        ((d_save - td * args.filter_d_stride + args.filter_d_pad) * args.filter_h * args.filter_w) //
-                        + ((h_save - th * args.filter_h_stride + args.filter_h_pad) * args.filter_w)          //
-                        + (w_save - tw * args.filter_w_stride + args.filter_w_pad)                       //
-                    );
-            }
-
-            const size_t mask_index = nn * args.mask_n_stride             //
-                                        + cc * args.mask_c_stride           //
-                                        + (size_t)(td * args.mask_d_stride) //
-                                        + (size_t)(th * args.mask_h_stride) //
-                                        + (size_t)(tw * args.mask_w_stride);
-            mask_ptr[mask_index] = res_index;
-        }
-#endif
-
-        top_ptr[top_index] = (_FLOAT)res;
-} // TEMPCODE
+    top_ptr[top_index] = (_FLOAT)res;
 }
 
 extern "C" __global__ void mloPoolingForwardNDNhwcNaive(

@@ -135,19 +135,26 @@ std::size_t sizeof_private_memory(const miopen::pooling::ProblemDescription& pro
 bool PoolingForward2d::IsApplicable(const ExecutionContext& context,
                                     const miopen::pooling::ProblemDescription& problem) const
 {
+    auto x_type = problem.GetXDesc().GetType();
+    auto y_type = problem.GetYDesc().GetType();
+    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf};    // TEMPCODE RJS fix types , miopenInt8, miopenFloat8
+
+    auto x_layout = problem.GetXDesc().GetLayout_str();
+    auto y_layout = problem.GetYDesc().GetLayout_str();
+    std::vector<std::string> layouts {"NCHW"};
+
     bool app =
-    problem.GetDirection() == miopen::pooling::Direction::Forward &&
-           problem.GetXDesc().GetNumDims() == 4 &&
-           problem.GetXDesc().GetType() == problem.GetYDesc().GetType() &&
-           (problem.GetXDesc().GetType() == miopenFloat ||
-            problem.GetXDesc().GetType() == miopenHalf) &&
-           problem.GetXDesc().GetLayout("NCHW") == "NCHW" &&
-           problem.GetYDesc().GetLayout("NCHW") == "NCHW" &&
+        problem.GetDirection() == miopen::pooling::Direction::Forward &&
+            problem.GetXDesc().GetNumDims() == 4 &&
+            (x_type == y_type) &&                                                    //
+            (x_layout == y_layout) &&                                                //
+            (std::find(types.cbegin(), types.cend(), x_type) != types.cend()) &&    //
+            (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end()) && //
            sizeof_private_memory(problem) <=
                TargetProperties::GetMaxWaveScratchSize() / context.GetStream().GetWavefrontWidth();
 
 // TEMPCODE RJS
-    std::cout << "%%%%%%%%%% PoolingForward2d::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout("NCHW") << std::endl;
+    std::cout << "%%%%%%%%%% PoolingForward2d::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout(x_layout) << std::endl;
                return app;
 }
 
