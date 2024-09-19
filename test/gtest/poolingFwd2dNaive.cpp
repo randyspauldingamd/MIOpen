@@ -258,8 +258,12 @@ void Run2dDriver(miopenDataType_t prec)
 }
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dBF16);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dInt8);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dFloat);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dHalf);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dF8);
 
-//INSTANTIATE_TEST_SUITE_P(BF16, PoolingFwd2dBF16, testing::Values(Get2dTestCases("--bfloat16")));
+INSTANTIATE_TEST_SUITE_P(BF16, PoolingFwd2dBF16, testing::Values(Get2dTestCases("--bfloat16")));
 INSTANTIATE_TEST_SUITE_P(Int8, PoolingFwd2dInt8, testing::Values(Get2dTestCases("--int8")));
 INSTANTIATE_TEST_SUITE_P(Float, PoolingFwd2dFloat, testing::Values(Get2dTestCases("--float")));
 INSTANTIATE_TEST_SUITE_P(Half, PoolingFwd2dHalf, testing::Values(Get2dTestCases("--half")));

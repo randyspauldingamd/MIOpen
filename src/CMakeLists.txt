@@ -26,6 +26,11 @@
 
 cmake_policy(SET CMP0057 NEW)
 
+include_directories(SYSTEM
+    /opt/rocm/include/gtest
+    /opt/rocm/include
+)
+
 include(ExportHeader)
 if(MIOPEN_ENABLE_SQLITE)
     add_subdirectory(sqlite)
@@ -594,7 +599,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/xform_bidirect_winograd_out.s
         kernels/UniversalTranspose.cl)
 
-        # TEMPCODE RJS
+# TEMPCODE KERNELS
     set(MIOPEN_KERNELS
         kernels/MIOpenPoolingForwardNDNhwcNaive.cpp
         kernels/MIOpenPooling.cl
@@ -787,6 +792,12 @@ else()
         ${MIOpen_Source}
         )
 endif()
+
+# TEMPCODE LIB_INC
+include_directories(SYSTEM
+    /opt/rocm/include/gtest/
+    /opt/rocm/include/
+)
 
 rocm_set_soversion(MIOpen ${MIOpen_SOVERSION})
 

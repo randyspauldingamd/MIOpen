@@ -60,6 +60,7 @@ NetworkConfig ProblemDescription::MakeNetworkConfig() const
                                                            : MLO_POOLING_OP_AVE_INCLUSIVE);
 
     ss << "m" + std::to_string(pooling_method);
+
     ss << "_dt" << xDesc.GetType();
     if(const auto ct = xDesc.GetCastType())
         ss << "_dct" << GetDataTypeName(*ct);

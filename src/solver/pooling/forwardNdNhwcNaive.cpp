@@ -72,7 +72,7 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
 {
     auto x_type = problem.GetXDesc().GetType();
     auto y_type = problem.GetYDesc().GetType();
-    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf, miopenInt8, miopenFloat8}; // , miopenBFloat16
+    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf, miopenInt8, miopenFloat8, miopenBFloat16}; // 
 
     auto mode = problem.GetPooling().GetMode();
     std::vector<miopenPoolingMode_t> modes {miopenPoolingMax, miopenPoolingAverage, miopenPoolingAverageInclusive};
@@ -81,7 +81,7 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
     auto y_layout = problem.GetYDesc().GetLayout_str();
     std::vector<std::string> layouts {"NHWC", "NDHWC"};
 
-    bool app = (problem.GetDirection() == miopen::pooling::Direction::Forward)          //
+    bool app = (problem.GetDirection() == miopen::pooling::Direction::Forward)      //
         && (x_type == y_type)                                                       //
         && (x_layout == y_layout)                                                   //
         && (std::find(types.cbegin(), types.cend(), x_type) != types.cend())        //

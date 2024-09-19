@@ -25,22 +25,19 @@
  *******************************************************************************/
 
 //#define TEMPCODE RJS
-#ifdef TEMPCODE
-#define MIOPEN_USE_NATIVE_DATATYPE_ACCUM 0
+// #ifdef TEMPCODE
+// #define MIOPEN_USE_NATIVE_DATATYPE_ACCUM 0
 
-#define MLO_POOLING_OP_ID MLO_POOLING_OP_AVE
+// #define MLO_POOLING_OP_ID MLO_POOLING_OP_AVE
 
-#define MLO_POOLING_INDEX_TYPE int
-#define MLO_POOLING_IS2D_KERNEL 0
-#define INPUT_TYPE _FLOAT
-#define OUTPUT_TYPE _FLOAT
-// #define TI INPUT_TYPE
-// #define TO OUTPUT_TYPE
-#define CVT_FP32_2ACCUM(x) (x)
-#endif
+// #define INPUT_TYPE _FLOAT
+// #define OUTPUT_TYPE _FLOAT
+// // #define TI INPUT_TYPE
+// // #define TO OUTPUT_TYPE
+// #define CVT_FP32_2ACCUM(x) (x)
+// #endif
 
 #ifndef MIOPEN_DONT_USE_HIP_RUNTIME_HEADERS
-#include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 #endif
 
@@ -70,8 +67,11 @@
 #include "float_types.h"
 #include "miopen_cstdint.hpp"
 
+// This implementation is extremely memory-bound, so float type is used for all calculations
+#define _FLOAT          float
+#define _FLOAT_ACCUM    float
+
 #if MIOPEN_USE_INT8 == 1
-    #define _FLOAT char
     #if !AVERAGE_OPS
         #ifndef FLT_MAX
         #define MAX_VAL 127 /* max value */
@@ -79,10 +79,14 @@
         #define MAX_VAL FLT_MAX
         #endif
     #endif
-#else
-    #define _FLOAT float
 #endif
-#define _FLOAT_ACCUM _FLOAT
+#if MIOPEN_USE_BFP16
+    #define NATIVE_CAST(_x)     (_FLOAT)bfloat16_to_float(_x)
+    #define NATIVE_UNCAST(_x)   (_FLOAT)float_to_bfloat16(_x)
+#else
+    #define NATIVE_CAST(_x)     (_FLOAT)(_x)
+    #define NATIVE_UNCAST(_x)   (_FLOAT)(_x)
+#endif
 
 #endif // TEMPCODE
 
@@ -94,10 +98,10 @@
 
 // Out N, D, H are encoded into the block indices x, y, z
 // No 2D-only optimization.
-template <typename TI, typename TO>
+template <typename TI>
 __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
-                                    TO* __restrict__ top_ptr,
-                                    TO* __restrict__ junk_ptr,  // TEMPCODE RJS
+                                    TI* __restrict__ top_ptr,
+                                    float* __restrict__ junk_ptr,  // TEMPCODE RJS
                                     ARG_UNUSED_FOR_AVERAGE index_t* __restrict__ mask_ptr,
                                     ARG_UNUSED_FOR_AVERAGE int save_index,
                                     ARG_UNUSED_FOR_AVERAGE int index_mode,
@@ -130,14 +134,14 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
     if(tw >= args.top_w) return;
     if(cc >= args.all_c) return;
 
+    for(int i = 4; i < 320; ++i)
+    {
+        junk_ptr[i] = 1.11111;
+    }
     auto log_ptr = junk_ptr;
     if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 &&  threadIdx.y == 0 &&  threadIdx.z == 0)
     {
-        for(int i = 0; i < 320; ++i)
-        {
-            junk_ptr[i] = (_FLOAT)1.11111;
-        }
-        int idx = 0;
+        int idx = 8;
         log_ptr[idx++] = gridDim.x;     // ND
         log_ptr[idx++] = gridDim.y;     // H
         log_ptr[idx++] = gridDim.z;     // W (*C overflow)
@@ -229,10 +233,17 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
             th * args.top_h_stride +            //
             tw * args.top_w_stride;
 
-#if false
-    size_t junk_idx = 64 + 4 * th;
+#if true
+    size_t junk_idx = 64;
+    int bot_idx = 0;
+    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
+    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
+    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
+    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
+    junk_idx += 4 * th;
     if(nn == 0 && cc == 0 && td == 0 && tw < 8 && th == 0)
     {
+
         size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
             size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
                 size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
@@ -258,7 +269,7 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
 #if AVERAGE_OPS
     _FLOAT_ACCUM res = (_FLOAT_ACCUM)(0);
 #else // MAX
-    _FLOAT_ACCUM res     = (_FLOAT_ACCUM)(-MAX_VAL_ACCUM);
+    _FLOAT_ACCUM res     = (_FLOAT_ACCUM)NATIVE_CAST(-MAX_VAL_ACCUM);
     bool found           = false; // May remain false if bot contains only NaNs/-INFs.
     uint32_t d_save          = 0;
     uint32_t h_save          = 0;
@@ -276,11 +287,12 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
             for(uint32_t bw = wstart; bw < wend; ++bw)
             {
 #if AVERAGE_OPS
-                res += static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]);
+                res += static_cast<_FLOAT_ACCUM>(NATIVE_CAST(bot_ptr[bot_index]));
 #else // MAX
-                if(static_cast<_FLOAT_ACCUM>(bot_ptr[bot_index]) > res)
+                auto val = static_cast<_FLOAT_ACCUM>(NATIVE_CAST(bot_ptr[bot_index]));
+                if(val > res)
                 {
-                    res = bot_ptr[bot_index];
+                    res = val;
                     if(save_index)
                     {
                         found  = true;
@@ -340,20 +352,20 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
     }
 #endif
 
-    top_ptr[top_index] = (_FLOAT)res;
+    top_ptr[top_index] = NATIVE_UNCAST(res);
 }
 
 extern "C" __global__ void mloPoolingForwardNDNhwcNaive(
                                     const INPUT_TYPE* __restrict__ bot_ptr,
-                                    OUTPUT_TYPE* __restrict__ top_ptr,
-                                    OUTPUT_TYPE* __restrict__ junk_ptr,    // TEMPCODE RJS
+                                    INPUT_TYPE* __restrict__ top_ptr,
+                                    float* __restrict__ junk_ptr,    // TEMPCODE RJS
                                     index_t* __restrict__ mask_ptr,
                                     int save_index,
                                     int index_mode,
-poolingNdNhwcArgs args
+                                    poolingNdNhwcArgs args
 )
 {
-    poolingForwardNDNhwcNaive<INPUT_TYPE, OUTPUT_TYPE>(
+    poolingForwardNDNhwcNaive<INPUT_TYPE>(
         bot_ptr,
         top_ptr,
         junk_ptr,
