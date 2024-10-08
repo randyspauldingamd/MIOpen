@@ -39,8 +39,8 @@ struct ProblemDescriptionLayoutBase : ProblemDescriptionBase
 {
     ProblemDescriptionLayoutBase()                              = default;
     ProblemDescriptionLayoutBase(const ProblemDescriptionLayoutBase&) = default;
-ProblemDescriptionLayoutBase(const TensorDescriptor& in_, // x for Forward, y for Backward*
-                            const TensorDescriptor& out_ // y for Forward, x for Backward*
+    ProblemDescriptionLayoutBase(const TensorDescriptor& in_, // x for Forward, y for Backward*
+                                const TensorDescriptor& out_ // y for Forward, x for Backward*
                        )
     : ProblemDescriptionBase(),
       in(in_),

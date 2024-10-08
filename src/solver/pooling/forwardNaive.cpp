@@ -82,7 +82,7 @@ bool PoolingForwardNaive::IsApplicable(const ExecutionContext&,
     return (problem.GetDirection() == miopen::pooling::Direction::Forward)          //
         && (x_type == y_type)                                                       //
         && (std::find(types.cbegin(), types.cend(), x_type) != types.cend())        //
-        && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())          //)
+        && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())          //
         && (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end());
 }
 
@@ -95,7 +95,7 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
     const auto bot  = problem.GetXDesc();
     const auto top  = problem.GetYDesc();
     const bool is2d = (bot.GetNumDims() == 4);
-    const bool isTranspose = problem.GetXDesc().GetLayout_str()[1] != 'C';
+    const bool isTranspose = problem.GetXDesc().GetLayout_str()[1] != 'C';  // TODO TRJS create member func
 
     // To compact code:
     const auto& pooling = problem.GetPooling();
@@ -204,7 +204,6 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
     const auto g1          = RoundUpNearestPower2Positive(isTranspose ? top_d : all_c);
     const auto g2          = RoundUpNearestPower2Positive(isTranspose || is2d_kernel ? top_h : top_d);
 
-    // TODO RJS: finish NHWC grid
     auto work_left = wavesize / 1;
     const auto w0  = (g0 < work_left) ? g0 : work_left;
     work_left /= w0;

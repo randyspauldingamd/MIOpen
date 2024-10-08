@@ -265,7 +265,7 @@ struct MIOPEN_INTERNALS_EXPORT TensorDescriptor : miopenTensorDescriptor
         {
             if(labels.size() != strides.size())
             {
-                std::ostringstream oss;
+                std::ostringstream oss; // TODO TRJS check this print
                 oss << "Invalid labels size. labels='" << labels << "', strides size=" << strides.size()
                     << ". Layout labels size must be equivalent to stride size";
                 MIOPEN_THROW(oss.str().c_str());

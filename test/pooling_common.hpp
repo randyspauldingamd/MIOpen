@@ -62,15 +62,15 @@ static int num_uint64_case_imgidx = 0;
 
 namespace {
 
-constexpr int RAND_INTEGER_MAX = 1200;
-constexpr int RAND_INTEGER_MIN = -880;
+constexpr int RAND_INTEGER_MAX = 12000;
+constexpr int RAND_INTEGER_MIN = -8800;
 
 template <typename T>
 auto gen_value =
-    [](auto... is) { return static_cast<T>(prng::gen_A_to_B(RAND_INTEGER_MIN, RAND_INTEGER_MAX)) / 10; };
+    [](auto... is) { return static_cast<T>(prng::gen_A_to_B(RAND_INTEGER_MIN, RAND_INTEGER_MAX)) / 100; };
 }
 
-static inline void print(const miopen::PoolingDescriptor& filter, bool is_default_layout)
+static inline void print(const miopen::PoolingDescriptor& filter)
 {
     std::cout << "Pooling: ";
     if(filter.GetMode() == miopenPoolingAverage)
@@ -80,7 +80,6 @@ static inline void print(const miopen::PoolingDescriptor& filter, bool is_defaul
     else
         std::cout << "Max";
     std::cout << std::endl;
-    std::cout << "Layout: " << (is_default_layout ? "default" : "transposed") << std::endl;
     std::cout << "Lengths: ";
     miopen::LogRange(std::cout, filter.GetLengths(), ", ") << std::endl;
     std::cout << "Pads: ";
@@ -148,7 +147,6 @@ struct verify_forward_pooling
     tensor<T>
     cpu(const tensor<T>& input, const miopen::PoolingDescriptor& filter, std::vector<Index>&) const
     {
-        // const bool is_default_layout = input.desc.IsDefaultLayout();
         const int sptl_dim_offset = 2;
         const int chan_dim_offset = 1;
 
@@ -276,10 +274,6 @@ struct verify_backward_pooling
                   bool use_global_index,
                   bool verify_index) const
     {
-        const bool is_default_layout = input.desc.IsDefaultLayout();
-        const int sptl_dim_offset = is_default_layout ? 2 : 1;
-        const int chan_dim_offset = is_default_layout ? 1 : SptDim + 1;
-
         auto dinput = input;
 
         std::vector<double> din_vec(input.desc.GetElementSpace(), 0.0);
@@ -550,6 +544,16 @@ struct pooling_driver : test_driver
             input,
             filter,
             indices);
+        auto dout = out.first;
+        dout.generate(tensor_elem_gen_integer{2503});
+        verify(verify_backward_pooling<SptDim>{},
+               input,
+               dout,
+               out.first,
+               filter,
+               indices,
+               wsidx != 0,
+               static_cast<bool>(this->verify_indices));
     }
 
     void run()
@@ -560,9 +564,6 @@ struct pooling_driver : test_driver
         const bool skip_many_configs_with_non_int8_index =
             (dataset_id == 0) && full_set; // Otherwise the default dataset takes too much time.
         const bool wide_dataset = (dataset_id == 2) && full_set;
-
-        // Input dimensions to the driver are always NCHW-style
-        const bool is_default_layout = !(layout == miopenTensorNHWC || layout == miopenTensorNDHWC);
 
         filter = miopen::PoolingDescriptor
         {
@@ -766,7 +767,7 @@ struct pooling_driver : test_driver
             }
         }
 
-        int sptl_index = is_default_layout ? 2 : 1;
+        constexpr int sptl_index = 2;
 
         std::vector<int> in_dim(input_desc.GetLengths().begin() + sptl_index,
             input_desc.GetLengths().begin() + sptl_index + sptl_dim);

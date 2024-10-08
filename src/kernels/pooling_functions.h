@@ -39,7 +39,7 @@ typedef MLO_POOLING_INDEX_TYPE index_t;
 #define MLO_POOLING_OP_STC 2
 #define MLO_POOLING_OP_AVE_INCLUSIVE 3
 
-#ifndef MLO_POOLING_OP_ID
+#ifndef MLO_POOLING_OP_ID   // TODO TRJS check: default used to be 0
 #define MLO_POOLING_OP_ID 1
 #endif
 

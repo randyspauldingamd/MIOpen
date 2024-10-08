@@ -26,11 +26,6 @@
 
 cmake_policy(SET CMP0057 NEW)
 
-include_directories(SYSTEM
-    /opt/rocm/include/gtest
-    /opt/rocm/include
-)
-
 include(ExportHeader)
 if(MIOPEN_ENABLE_SQLITE)
     add_subdirectory(sqlite)
@@ -600,7 +595,7 @@ if( MIOPEN_BACKEND MATCHES "OpenCL" OR MIOPEN_BACKEND STREQUAL "HIPOC" OR MIOPEN
         kernels/xform_bidirect_winograd_out.s
         kernels/UniversalTranspose.cl)
 
-        # Kernels in development lists.
+    # Kernels in development lists.
     # Should be ALWAYS empty in develop branch (at the time of PR merge)
     # Intention: to speed up kernel development rebuild time
     set(MIOPEN_DEVELOPMENT_KERNELS)

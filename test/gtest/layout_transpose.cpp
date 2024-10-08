@@ -274,10 +274,7 @@ protected:
                 miopen::tensor_layout_to_strides(
                     tensor_len, layout_default, layout_string, tensor_strides);
 
-                auto t_src     = tensor<T>{tensor_len, tensor_strides};
-
-                t_src.generate(gen_value<T>);
-
+                auto t_src     = tensor<T>{tensor_len, tensor_strides}.generate(gen_value<T>);
                 auto t_dst     = tensor<T>{tensor_len, tensor_strides};
                 auto t_dst_gpu = tensor<T>{tensor_len, tensor_strides};
 

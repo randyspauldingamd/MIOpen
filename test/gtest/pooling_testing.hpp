@@ -525,7 +525,7 @@ struct pooling_driver : test_driver
     static void randomize_tensor(tensor<T>& in)
     {
         static tensor<T> random_data{{1}};
-        static tensor<int> starts{{1}};
+        static tensor<int> starts{std::vector<size_t>{1}};
         static size_t start_idx = 0;
 
         const auto size = in.GetSize();
@@ -534,22 +534,22 @@ struct pooling_driver : test_driver
         {
             random_data = tensor<T>{{ran_size}}.generate(tensor_elem_gen_integer{2503});
         }
-        if (starts.GetSize() == 1)
+        if (starts.GetSize() == 1)  // TODO TRJS is there a cleaner way to initialize starts?
         {
-            starts = tensor<size_t>{{1 << 20}}.generate(gen_start);
+            starts = tensor<int>{std::vector<size_t>{1 << 20}}.generate(gen_start);
         }
 
         const auto r_start = starts[start_idx++] % (random_data.GetSize() / 3);
         if (start_idx >= starts.GetSize()) start_idx = 0;
 
-        std::cout << "randomizing " << std::setw(9) << size << " elems from " << std::setw(9) << r_start << " (" << start_idx << ")"
+        std::cout << "randomizing " << std::setw(9) << size << " elems from " << std::setw(9) << r_start << " (" << start_idx << ")"    // TRJS
         // << "(" << std::setw(8) << prng::gen_0_to_B(size / 2)  << std::setw(8) << prng::gen_0_to_B(size / 2)  << std::setw(8) << prng::gen_0_to_B(size / 2)  << std::setw(8) << prng::gen_0_to_B(size / 2) << ")" 
         << std::endl;
         in.data.assign(random_data.begin() + r_start, random_data.begin() + r_start + size);
     }
 
     std::unordered_map<std::string, miopenIndexType_t> index_type_lookup = {
-        {miopen::ToUpper("miopenIndexUint8"), miopenIndexUint8},
+        {miopen::ToUpper("miopenIndexUint8"),  miopenIndexUint8},
         {miopen::ToUpper("miopenIndexUint16"), miopenIndexUint16},
         {miopen::ToUpper("miopenIndexUint32"), miopenIndexUint32},
         {miopen::ToUpper("miopenIndexUint64"), miopenIndexUint64},
