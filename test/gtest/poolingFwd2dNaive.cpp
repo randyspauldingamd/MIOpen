@@ -114,12 +114,12 @@ struct layout_data
 
 }
 
-class PoolingFwd2d : public testing::TestWithParam<std::vector<std::string>> {};
-class PoolingFwd2dInt8 : public PoolingFwd2d {};
-class PoolingFwd2dFloat : public PoolingFwd2d {};
-class PoolingFwd2dHalf : public PoolingFwd2d {};
-class PoolingFwd2dBF16 : public PoolingFwd2d {};
-class PoolingFwd2dF8 : public PoolingFwd2d {};
+class Pooling2d : public testing::TestWithParam<std::vector<std::string>> {};
+class Pooling2dInt8 : public Pooling2d {};
+class Pooling2dFloat : public Pooling2d {};
+class Pooling2dHalf : public Pooling2d {};
+class Pooling2dBF16 : public Pooling2d {};
+class Pooling2dF8 : public Pooling2d {};
 
 void Run2dDriver(miopenDataType_t prec);
 
@@ -144,62 +144,61 @@ std::vector<std::string> Get2dTestCases(const std::string precision)
 
     const std::vector<std::string> test_cases = {
         // clang-format off
-    {"test_pooling2d " + precision + " --all --dataset 0 --limit 0 " + flag_arg},   // TEMPCODE RJS DATASET
-    // {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg},   // TEMPCODE RJS DATASET
-    // {"test_pooling2d " + precision + " --all --dataset 2 --limit 0 " + flag_arg}    // TEMPCODE RJS DATASET
+    {"test_pooling2d " + precision + " --all --dataset 0 --limit 0 " + flag_arg},
+    {"test_pooling2d " + precision + " --all --dataset 1 --limit 0 " + flag_arg},
+    {"test_pooling2d " + precision + " --all --dataset 2 --limit 0 " + flag_arg}
         // clang-format on
     };
 
     return test_cases;
 }
 } // namespace pooling_tests
-// using namespace pooling_tests;
 
-TEST_P(PoolingFwd2dInt8, NNT)
+TEST_P(Pooling2dInt8, NNT)
 {
     if(!IsTestRunWith("--int8"))           std::cout << "WOULD SKIP BECAUSE NOT INT8!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--int8") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--int8") TRJS
         GTEST_SKIP();
 
     Run2dDriver(miopenInt8);
 };
 
-TEST_P(PoolingFwd2dFloat, NNT)
+TEST_P(Pooling2dFloat, NNT)
 {
     if(!IsTestRunWith("--float"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT!" << std::endl;
 
-    if(SkipTest() || !IsTestSupportedForDevice(get_handle()))
+    if(SkipTest() || !IsTestSupportedForDevice(get_handle())) //  && IsTestRunWith("--float") TRJS
         GTEST_SKIP();
 
     Run2dDriver(miopenFloat);
 };
 
-TEST_P(PoolingFwd2dHalf, NNT)
+TEST_P(Pooling2dHalf, NNT)
 {
     if(!IsTestRunWith("--half"))           std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--half") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--half") TRJS
         GTEST_SKIP();
 
     Run2dDriver(miopenHalf);
 };
 
-TEST_P(PoolingFwd2dBF16, NNT)
+TEST_P(Pooling2dBF16, NNT)
 {
-    if(!IsTestRunWith("--bfloat16"))           std::cout << "WOULD SKIP BECAUSE NOT BFLOAT16!" << std::endl;
+    if(!IsTestRunWith("--bfloat16"))            std::cout << "WOULD SKIP BECAUSE NOT BFLOAT16!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--bfloat16") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--bfloat16") TRJS
         GTEST_SKIP();
 
     Run2dDriver(miopenBFloat16);
 };
 
-TEST_P(PoolingFwd2dF8, NNT)
+TEST_P(Pooling2dF8, NNT)
 {
-    if(!IsTestRunWith("--float8"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT8!" << std::endl;
+    if(!IsTestRunWith("--float8"))              std::cout << "WOULD SKIP BECAUSE NOT FLOAT8!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--float8") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--float8") TRJS
         GTEST_SKIP();
 
     Run2dDriver(miopenFloat8);
@@ -208,40 +207,31 @@ TEST_P(PoolingFwd2dF8, NNT)
 void Run2dDriver(miopenDataType_t prec)
 {
     auto cases = Get2dTestCases("--float");
-    // std::cerr << " Cases: " << cases.size() << std::endl;    // TEMPCODE RJS
-    // for(const auto& test_value : cases)
-    // {
-    //     std::cerr << "      : " << test_value << std::endl;    // TEMPCODE RJS
-    // }
  
     std::vector<std::string> params;
     switch(prec)
     {
-    case miopenFloat: params = PoolingFwd2dFloat_NNT_Test::GetParam(); break;
-    case miopenHalf: params = PoolingFwd2dHalf_NNT_Test::GetParam(); break;
-    case miopenBFloat16: params = PoolingFwd2dBF16_NNT_Test::GetParam(); break;
-    case miopenInt8: params = PoolingFwd2dInt8_NNT_Test::GetParam(); break;
-    case miopenFloat8: params = PoolingFwd2dF8_NNT_Test::GetParam(); break;
+    case miopenFloat: params = Pooling2dFloat_NNT_Test::GetParam(); break;
+    case miopenHalf: params = Pooling2dHalf_NNT_Test::GetParam(); break;
+    case miopenBFloat16: params = Pooling2dBF16_NNT_Test::GetParam(); break;
+    case miopenInt8: params = Pooling2dInt8_NNT_Test::GetParam(); break;
+    case miopenFloat8: params = Pooling2dF8_NNT_Test::GetParam(); break;
     case miopenInt32:
     case miopenDouble:
     case miopenBFloat8:
     case miopenInt64:
         FAIL()
-            << "miopenBFloat16, miopenInt8, miopenInt32, miopenDouble, miopenFloat8, miopenBFloat8, miopenInt64 "
-               "data type not supported by "
+            << "miopenInt32, miopenDouble, miopenBFloat8, miopenInt64 "
+               "data types not supported by "
                "poolingFwd2dNaive test";
 
-    default: params = PoolingFwd2dFloat_NNT_Test::GetParam();
+    default: params = Pooling2dFloat_NNT_Test::GetParam();
     }
 
     std::cerr << "Params: " << params.size() << std::endl;
+
     for(const auto& test_value : params)
     {
-        std::cerr << "      : " << test_value << std::endl;    // TEMPCODE RJS
-    }
-    for(const auto& test_value : params)
-    {
-        std::cerr << "Testing: " << test_value << std::endl;    // TEMPCODE RJS
         std::vector<std::string> tokens;
         GetArgs(test_value, tokens);
         std::vector<const char*> ptrs;
@@ -257,16 +247,10 @@ void Run2dDriver(miopenDataType_t prec)
     }
 }
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dBF16);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dInt8);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dFloat);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dHalf);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd2dF8);
-
-INSTANTIATE_TEST_SUITE_P(BF16, PoolingFwd2dBF16, testing::Values(Get2dTestCases("--bfloat16")));
-INSTANTIATE_TEST_SUITE_P(Int8, PoolingFwd2dInt8, testing::Values(Get2dTestCases("--int8")));
-INSTANTIATE_TEST_SUITE_P(Float, PoolingFwd2dFloat, testing::Values(Get2dTestCases("--float")));
-INSTANTIATE_TEST_SUITE_P(Half, PoolingFwd2dHalf, testing::Values(Get2dTestCases("--half")));
-INSTANTIATE_TEST_SUITE_P(F8, PoolingFwd2dF8, testing::Values(Get2dTestCases("--float8")));
+INSTANTIATE_TEST_SUITE_P(Full, Pooling2dBF16, testing::Values(Get2dTestCases("--bfloat16")));
+INSTANTIATE_TEST_SUITE_P(Full, Pooling2dInt8, testing::Values(Get2dTestCases("--int8")));
+INSTANTIATE_TEST_SUITE_P(Full, Pooling2dFloat, testing::Values(Get2dTestCases("--float")));
+INSTANTIATE_TEST_SUITE_P(Full, Pooling2dHalf, testing::Values(Get2dTestCases("--half")));
+INSTANTIATE_TEST_SUITE_P(Full, Pooling2dF8, testing::Values(Get2dTestCases("--float8")));
 
 #endif

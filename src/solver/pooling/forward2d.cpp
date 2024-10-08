@@ -137,7 +137,7 @@ bool PoolingForward2d::IsApplicable(const ExecutionContext& context,
 {
     auto x_type = problem.GetXDesc().GetType();
     auto y_type = problem.GetYDesc().GetType();
-    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf};    // TEMPCODE RJS fix types , miopenInt8, miopenFloat8
+    std::vector<miopenDataType_t> types {miopenFloat, miopenHalf};    // TRJS TODO fix types , miopenInt8, miopenFloat8
 
     auto x_layout = problem.GetXDesc().GetLayout_str();
     auto y_layout = problem.GetYDesc().GetLayout_str();
@@ -153,21 +153,7 @@ bool PoolingForward2d::IsApplicable(const ExecutionContext& context,
            sizeof_private_memory(problem) <=
                TargetProperties::GetMaxWaveScratchSize() / context.GetStream().GetWavefrontWidth();
 
-// TEMPCODE RJS
-    std::cout << "%%%%%%%%%% PoolingForward2d::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout(x_layout) << std::endl;
-               return app;
-}
-
-#include <iomanip>  // TEMPCODE RJS
-namespace {
-    template<typename T>
-    std::ostream& printVec(std::string name, const std::vector<T>& vec)
-    {
-        return std::cout;
-        std::cout << "Vector Printing: " << std::setw(20) << name << "[" << vec.size() << "]: ";
-        for(auto i : vec)    std::cout << std::setw(8) << i;
-        return std::cout;
-    }
+    return app;
 }
 
 ConvSolution PoolingForward2d::GetSolution(const ExecutionContext&,
@@ -205,24 +191,6 @@ ConvSolution PoolingForward2d::GetSolution(const ExecutionContext&,
                 ? MLO_POOLING_OP_MAX
                 : ((pool_d.GetMode() == miopenPoolingAverage) ? MLO_POOLING_OP_AVE
                                                               : MLO_POOLING_OP_AVE_INCLUSIVE);
-
-
-    // TEMPCODE RJS
-    // const auto bot  = problem.GetXDesc();
-    // const auto top  = problem.GetYDesc();
-    // const auto& pooling = problem.GetPooling();
-    // const auto& lengths = pooling.GetLengths();
-    // const auto& strides = pooling.GetStrides();
-    // const auto& pads    = pooling.GetPads();
-
-    // std::cout << "PoolingForward2d GetSolution: " << std::endl;
-    // printVec("   bot lengths", bot.GetLengths()) <<
-    // printVec("   bot strides", bot.GetStrides()) << std::endl;
-    // printVec("   top lengths", top.GetLengths()) <<
-    // printVec("   top strides", top.GetStrides()) << std::endl;
-    // printVec("   pool lengths", lengths) <<
-    // printVec("   pool strides", strides) <<
-    // printVec("   pool pads", pads) << std::endl;
 
         auto build_params = KernelBuildParameters{
             {"MLO_POOLING_OP_ID", pooling_method},

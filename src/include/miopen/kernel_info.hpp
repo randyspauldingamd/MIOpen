@@ -48,6 +48,9 @@ struct KernelInfo
     fs::path kernel_file;
     std::string kernel_name;
     friend std::ostream& operator<<(std::ostream& os, const KernelInfo& k);
+
+    /// configures the working set using hip-style indices
+    void ConfigureHip(size_t l0, size_t l1, size_t l2, size_t g0, size_t g1, size_t g2);
 };
 
 std::vector<Program> PrecompileKernels(const Handle& h,

@@ -50,21 +50,6 @@ bool IsPower2(T v)
 }
 #endif
 
-template <typename T>
-T RoundUpNearestPower2Positive(T v) = delete;
-
-inline uint32_t RoundUpNearestPower2Positive(uint32_t v)
-{
-    assert(v > 0);
-    --v;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    return std::max(++v, 1U); // Shut clang-tidy.
-}
-
 } // namespace
 
 bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
@@ -88,28 +73,7 @@ bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
         && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())          //)
         && (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end());
 
-    // TODO RJS check grid size
-
-    std::cout << "%%%%%%%%%% PoolingForwardNDNhwcNaive::IsApplicable: " << app << " " <<  problem.GetXDesc().GetLayout_str() << "->" << problem.GetXDesc().GetLayout(x_layout)
-     << "  " << problem.GetYDesc().GetLayout_str() << "->" << problem.GetYDesc().GetLayout(y_layout)
-       << "  "  << (problem.GetDirection() == miopen::pooling::Direction::Forward)
-        << (x_type == y_type)
-        << (x_layout == y_layout) << (std::find(types.cbegin(), types.cend(), x_type) != types.cend())
-        << (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend()) << (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end()) << std::endl;
-
     return app;
-}
-
-#include <iomanip>  // TEMPCODE RJS
-namespace {
-    template<typename T>
-    void printVec(std::string name, std::vector<T> vec)
-    {
-         return;
-      std::cout << "Vector Printing: " << std::setw(20) << name << "[" << vec.size() << "]: ";
-        for(auto i : vec)    std::cout << std::setw(8) << i;
-        std::cout << std::endl;
-    }
 }
 
 ConvSolution
@@ -176,17 +140,6 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     /// not require widening to size_t prior mul, but (d_stride * dim * dim)
     /// requires it because the total number of muls is 4.
 
-    // TEMPCODE RJS
-    printVec("======================================================================", std::vector<int>{});
-    printVec("bot lengths", bot.GetLengths());
-    printVec("bot strides", bot.GetStrides());
-    printVec("top lengths", top.GetLengths());
-    printVec("top strides", top.GetStrides());
-    printVec("pool lengths", lengths);
-    printVec("pool strides", strides);
-    printVec("pool pads", pads);
-    printVec("======================================================================", std::vector<int>{});
-
     const auto spatial_dim = is2d ? 2U : 3U;
 
     std::tie(args.all_n, args.all_c, args.bot_d, args.bot_h, args.bot_w) = miopen::GetNCDHW(spatial_dim, bot.GetLengths());
@@ -204,7 +157,7 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     args.mask_w_stride = 1;
     args.mask_h_stride = args.mask_w_stride * args.top_w;
     args.mask_d_stride = args.mask_h_stride * args.top_h;
-    args.mask_c_stride   = static_cast<BIGONE>(args.mask_d_stride) * args.top_d;
+    args.mask_c_stride   = args.mask_d_stride * args.top_d;
     args.mask_n_stride   = args.mask_c_stride * args.all_c;
 
     /// About optimal grid size:
@@ -305,19 +258,16 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
         // * 2: layout (NCHW vs NHWC)
         // * 2: 2D and 3D kernels (optimization)
 
+        kernel.ConfigureHip(l0, l1, l2, g0, g1, g2);
         // KernelInfo uses OCL-style indexes
-        kernel.l_wk.clear();
-        kernel.l_wk.push_back(l0);
-        kernel.l_wk.push_back(l1);
-        kernel.l_wk.push_back(l2);
-        kernel.g_wk.clear();
-        kernel.g_wk.push_back(g0 * l0);
-        kernel.g_wk.push_back(g1 * l1);
-        kernel.g_wk.push_back(g2 * l2);
-
-        // TEMPCODE RJS
-std::cout << "Kernel dims: g[" << kernel.g_wk.size() << "] " << kernel.g_wk[0] << " " << kernel.g_wk[1] << " " << kernel.g_wk[2]
-<< " | l[" << kernel.l_wk.size() << "] " << kernel.l_wk[0] << " " << kernel.l_wk[1] << " " << kernel.l_wk[2] << std::endl;
+        // kernel.l_wk.clear();
+        // kernel.l_wk.push_back(l0);
+        // kernel.l_wk.push_back(l1);
+        // kernel.l_wk.push_back(l2);
+        // kernel.g_wk.clear();
+        // kernel.g_wk.push_back(g0 * l0);
+        // kernel.g_wk.push_back(g1 * l1);
+        // kernel.g_wk.push_back(g2 * l2);
         result.construction_params.push_back(kernel);
     }
 
@@ -329,20 +279,20 @@ std::cout << "Kernel dims: g[" << kernel.g_wk.size() << "] " << kernel.g_wk[0] <
             kernel(
                 params.x,
                 params.y,
-                params.junk,   // TEMPCODE RJS
                 params.workspace,
                 save_index,
                 index_mode,
-                args.filter_d, args.filter_h, args.filter_w,
-                args.filter_d_stride, args.filter_h_stride, args.filter_w_stride,
-                args.filter_d_pad, args.filter_h_pad, args.filter_w_pad,
-                args.all_n,
-                args.all_c,
-                args.bot_d, args.bot_h, args.bot_w,
-                args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride,
-                args.top_d, args.top_h, args.top_w,
-                args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride, args.top_w_stride,
-                args.mask_n_stride, args.mask_c_stride, args.mask_d_stride, args.mask_h_stride, args.mask_w_stride
+                args
+                // args.filter_d, args.filter_h, args.filter_w,
+                // args.filter_d_stride, args.filter_h_stride, args.filter_w_stride,
+                // args.filter_d_pad, args.filter_h_pad, args.filter_w_pad,
+                // args.all_n,
+                // args.all_c,
+                // args.bot_d, args.bot_h, args.bot_w,
+                // args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride,
+                // args.top_d, args.top_h, args.top_w,
+                // args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride, args.top_w_stride,
+                // args.mask_n_stride, args.mask_c_stride, args.mask_d_stride, args.mask_h_stride, args.mask_w_stride
             );
         };
     };

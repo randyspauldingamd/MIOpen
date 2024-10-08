@@ -145,26 +145,22 @@ std::vector<std::string> Get3dTestCases(const std::string precision)
 
     const std::vector<std::string> test_cases = {
         // clang-format off
-    {"test_pooling3d " + precision + " --all --dataset 0 --limit 0 " + flag_arg},    // TEMPCODE RJS DATASET
-    // {"test_pooling3d " + precision + " --all --dataset 1 --limit 0 " + flag_arg},  // TEMPCODE RJS DATASET
-    // {"test_pooling3d " + precision + " --all --dataset 2 --limit 0 " + flag_arg}    // TEMPCODE RJS DATASET
+    {"test_pooling3d " + precision + " --all --dataset 0 --limit 0 " + flag_arg},
+    {"test_pooling3d " + precision + " --all --dataset 1 --limit 0 " + flag_arg},
+    {"test_pooling3d " + precision + " --all --dataset 2 --limit 0 " + flag_arg}
         // clang-format on
     };
 
     return test_cases;
 }
 } // namespace pooling_tests
-// using namespace pooling_tests;
 
-TEST_P(PoolingFwd3dFloat, NNT)    // NDNaiveTranspose
+TEST_P(PoolingFwd3dFloat, NNT)    // NNT=NdNaiveTranspose
 {
     const auto& handle = get_handle();
-    if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
-    if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
     if(!IsTestRunWith("--float"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT!" << std::endl;
-        // Run3dDriver(miopenFloat);   return; // TEMPCODE RJS
-    //  && IsTestRunWith("--float")
-    if(IsTestSupportedForDevice(handle) && !SkipTest())
+
+    if(IsTestSupportedForDevice(handle) && !SkipTest()) //  && IsTestRunWith("--float") TRJS
     {
         Run3dDriver(miopenFloat);
     }
@@ -177,11 +173,9 @@ TEST_P(PoolingFwd3dFloat, NNT)    // NDNaiveTranspose
 TEST_P(PoolingFwd3dHalf, NNT)
 {
     const auto& handle = get_handle();
-    if(!IsTestSupportedForDevice(handle))   std::cout << "WOULD SKIP BECAUSE NOT SUPPORTED!" << std::endl;
-    if(SkipTest())                          std::cout << "WOULD SKIP BECAUSE SKIPTEST!" << std::endl;
-    if(!IsTestRunWith("--half"))           std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
+    if(!IsTestRunWith("--half"))            std::cout << "WOULD SKIP BECAUSE NOT HALF!" << std::endl;
 
-    if(IsTestSupportedForDevice(handle) && !SkipTest()) //  && IsTestRunWith("--half") TEMPCODE RJS
+    if(IsTestSupportedForDevice(handle) && !SkipTest()) //  && IsTestRunWith("--half") TRJS
     {
         Run3dDriver(miopenHalf);
     }
@@ -195,7 +189,7 @@ TEST_P(PoolingFwd3dBF16, NNT)
 {
     if(!IsTestRunWith("--bfloat16"))           std::cout << "WOULD SKIP BECAUSE NOT BFLOAT16!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--bfloat16") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--bfloat16") TRJS
         GTEST_SKIP();
 
     Run3dDriver(miopenBFloat16);
@@ -205,7 +199,7 @@ TEST_P(PoolingFwd3dInt8, NNT)
 {
     if(!IsTestRunWith("--int8"))           std::cout << "WOULD SKIP BECAUSE NOT INT8!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--int8") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--int8") TRJS
         GTEST_SKIP();
 
     Run3dDriver(miopenInt8);
@@ -215,7 +209,7 @@ TEST_P(PoolingFwd3dF8, NNT)
 {
     if(!IsTestRunWith("--float8"))           std::cout << "WOULD SKIP BECAUSE NOT FLOAT8!" << std::endl;
 
-    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--float8") TEMPCODE RJS
+    if(!IsTestSupportedForDevice(get_handle()) || SkipTest()) //  && IsTestRunWith("--float8") TRJS
         GTEST_SKIP();
 
     Run3dDriver(miopenFloat8);
@@ -224,11 +218,6 @@ TEST_P(PoolingFwd3dF8, NNT)
 void Run3dDriver(miopenDataType_t prec)
 {
     auto cases = Get3dTestCases("--float");
-       std::cerr << " Cases: " << cases.size() << std::endl;
-    for(const auto& test_value : cases)
-    {
-        std::cerr << "      : " << test_value << std::endl;    // TEMPCODE RJS
-    }
  
     std::vector<std::string> params;
     switch(prec)
@@ -243,8 +232,8 @@ void Run3dDriver(miopenDataType_t prec)
     case miopenBFloat8:
     case miopenInt64:
         FAIL()
-            << "miopenBFloat16, miopenInt8, miopenInt32, miopenDouble, miopenFloat8, miopenBFloat8, miopenInt64 "
-               "data type not supported by "
+            << "miopenInt32, miopenDouble, miopenFloat8, miopenBFloat8, miopenInt64 "
+               "data types not supported by "
                "poolingFwdNdNaive test";
 
     default: params = PoolingFwd3dFloat_NNT_Test::GetParam();
@@ -252,7 +241,6 @@ void Run3dDriver(miopenDataType_t prec)
 
     for(const auto& test_value : params)
     {
-        std::cerr << "Running Test: " << test_value << std::endl;    // TEMPCODE RJS
         std::vector<std::string> tokens;
         GetArgs(test_value, tokens);
         std::vector<const char*> ptrs;
@@ -268,13 +256,7 @@ void Run3dDriver(miopenDataType_t prec)
     }
 }
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd3dBF16);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd3dFloat);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd3dHalf);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd3dInt8);
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(PoolingFwd3dF8);
-
-// INSTANTIATE_TEST_SUITE_P(BF16, PoolingFwd3dBF16, testing::Values(Get3dTestCases("--bfloat16")));
+INSTANTIATE_TEST_SUITE_P(BF16, PoolingFwd3dBF16, testing::Values(Get3dTestCases("--bfloat16")));
 INSTANTIATE_TEST_SUITE_P(Float, PoolingFwd3dFloat, testing::Values(Get3dTestCases("--float")));
 INSTANTIATE_TEST_SUITE_P(Half, PoolingFwd3dHalf, testing::Values(Get3dTestCases("--half")));
 INSTANTIATE_TEST_SUITE_P(Int8, PoolingFwd3dInt8, testing::Values(Get3dTestCases("--int8")));

@@ -24,26 +24,10 @@
  *
  *******************************************************************************/
 
-//#define TEMPCODE RJS
-// #ifdef TEMPCODE
-// #define MIOPEN_USE_NATIVE_DATATYPE_ACCUM 0
-
-// #define MLO_POOLING_OP_ID MLO_POOLING_OP_AVE
-
-// #define INPUT_TYPE _FLOAT
-// #define OUTPUT_TYPE _FLOAT
-// // #define TI INPUT_TYPE
-// // #define TO OUTPUT_TYPE
-// #define CVT_FP32_2ACCUM(x) (x)
-// #endif
-
 #ifndef MIOPEN_DONT_USE_HIP_RUNTIME_HEADERS
 #include <hip/hip_runtime.h>
 #endif
 
-#ifdef TEMPCODE
-#include "float_types.h"
-#endif
 #include "pooling_functions.h"
 #include "poolingNdNhwcArgs.hpp"
 
@@ -57,7 +41,6 @@
 
 // Let's use extended-precision accumulator only in FP16 pooling and only for averaging.
 // For all other ops and datatypes, use native accumulator, i.e. treate FLOAT_ACCUM as FLOAT.
-#ifndef TEMPCODE
 #if !(AVERAGE_OPS && MIOPEN_USE_FP16)
 #define MIOPEN_USE_NATIVE_DATATYPE_ACCUM 1
 // #else
@@ -88,8 +71,6 @@
     #define NATIVE_UNCAST(_x)   (_FLOAT)(_x)
 #endif
 
-#endif // TEMPCODE
-
 #if AVERAGE_OPS
 #define ARG_UNUSED_FOR_AVERAGE __attribute__((__unused__))
 #else
@@ -101,7 +82,6 @@
 template <typename TI>
 __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
                                     TI* __restrict__ top_ptr,
-                                    float* __restrict__ junk_ptr,  // TEMPCODE RJS
                                     ARG_UNUSED_FOR_AVERAGE index_t* __restrict__ mask_ptr,
                                     ARG_UNUSED_FOR_AVERAGE int save_index,
                                     ARG_UNUSED_FOR_AVERAGE int index_mode,
@@ -112,7 +92,7 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
     const uint32_t nd = blockIdx.x;
     const uint32_t h_ = blockIdx.y;
     const uint32_t w_c = blockIdx.z;
-    const uint32_t w_ = w_c % args.top_w;                               // CAN w=fast index
+    const uint32_t w_ = w_c % args.top_w;                   // CAN w=fast index
 
     const uint32_t C_WH = blockDim.x;
     const uint32_t _H = blockDim.y;
@@ -122,11 +102,11 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
     const uint32_t _h = threadIdx.y;
     const uint32_t _w = threadIdx.z;
 
-    const uint32_t nn = nd / args.top_d;                                // n=slow index
-    const uint32_t cc = (w_c / args.top_w) * C_WH + c;                  // c=slow index (lg-C)
-    const uint32_t td = nd % args.top_d;                                // top d=fast index
-    const uint32_t th = h_ * _H + _h;                                   // top h: blockIdx is slow (sm-C)
-    const uint32_t tw = w_ * _W + _w;                                   // top w: blockIdx is slow (sm-C)
+    const uint32_t nn = nd / args.top_d;                    // n=slow index
+    const uint32_t cc = (w_c / args.top_w) * C_WH + c;      // c=slow index (lg-C)
+    const uint32_t td = nd % args.top_d;                    // top d=fast index
+    const uint32_t th = h_ * _H + _h;                       // top h: blockIdx is slow (sm-C)
+    const uint32_t tw = w_ * _W + _w;                       // top w: blockIdx is slow (sm-C)
 
     if(nn >= args.all_n) return;
     if(td >= args.top_d) return;
@@ -134,96 +114,16 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
     if(tw >= args.top_w) return;
     if(cc >= args.all_c) return;
 
-    for(int i = 4; i < 320; ++i)
-    {
-        junk_ptr[i] = 1.11111;
-    }
-    auto log_ptr = junk_ptr;
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 &&  threadIdx.y == 0 &&  threadIdx.z == 0)
-    {
-        int idx = 8;
-        log_ptr[idx++] = gridDim.x;     // ND
-        log_ptr[idx++] = gridDim.y;     // H
-        log_ptr[idx++] = gridDim.z;     // W (*C overflow)
-        log_ptr[idx++] = -9;
-
-        log_ptr[idx++] = blockDim.x;    // C
-        log_ptr[idx++] = blockDim.y;    // small-C H
-        log_ptr[idx++] = blockDim.z;    // small-C W
-        log_ptr[idx++] = -8;
-
-        log_ptr[idx++] = args.filter_d;
-        log_ptr[idx++] = args.filter_h;
-        log_ptr[idx++] = args.filter_w;
-        log_ptr[idx++] = -7;
-
-        log_ptr[idx++] = args.filter_d_stride;
-        log_ptr[idx++] = args.filter_h_stride;
-        log_ptr[idx++] = args.filter_w_stride;
-        log_ptr[idx++] = -6;
-
-        log_ptr[idx++] = args.filter_d_pad;
-        log_ptr[idx++] = args.filter_h_pad;
-        log_ptr[idx++] = args.filter_w_pad;
-        log_ptr[idx++] = -5;
-
-        log_ptr[idx++] = args.all_n;
-        log_ptr[idx++] = args.all_c;
-        log_ptr[idx++] = args.bot_n_stride;
-        log_ptr[idx++] = args.bot_c_stride;
-
-        log_ptr[idx++] = args.top_n_stride;
-        log_ptr[idx++] = args.top_c_stride;
-        #if AVERAGE_OPS
-        log_ptr[idx++] = -4;
-        log_ptr[idx++] = -4;
-        #else
-        log_ptr[idx++] = args.mask_n_stride;
-        log_ptr[idx++] = args.mask_c_stride;
-        #endif
-
-        log_ptr[idx++] = args.bot_d;
-        log_ptr[idx++] = args.bot_h;
-        log_ptr[idx++] = args.bot_w;
-        log_ptr[idx++] = -3;
-
-        log_ptr[idx++] = args.bot_d_stride;
-        log_ptr[idx++] = args.bot_h_stride;
-        log_ptr[idx++] = args.bot_w_stride;
-        log_ptr[idx++] = -2;
-
-        log_ptr[idx++] = args.top_d;
-        log_ptr[idx++] = args.top_h;
-        log_ptr[idx++] = args.top_w;
-        log_ptr[idx++] = -1;
-    
-        log_ptr[idx++] = args.top_d_stride;
-        log_ptr[idx++] = args.top_h_stride;
-        log_ptr[idx++] = args.top_w_stride;
-        log_ptr[idx++] = -9;
-
-        #if AVERAGE_OPS
-        log_ptr[idx++] = -8;
-        log_ptr[idx++] = -8;
-        log_ptr[idx++] = -8;
-        #else
-        log_ptr[idx++] = args.mask_d_stride;
-        log_ptr[idx++] = args.mask_h_stride;
-        log_ptr[idx++] = args.mask_w_stride;
-        #endif
-        log_ptr[idx++] = -7;
-    }
-
     const auto int_dstart   = static_cast<int64_t>(td * args.filter_d_stride) - static_cast<int64_t>(args.filter_d_pad);
-    const auto dend         = static_cast<size_t>(min(int_dstart + static_cast<int64_t>(args.filter_d), static_cast<int64_t>(args.bot_d)));
+    /* const */ auto dend         = static_cast<size_t>(min(int_dstart + static_cast<int64_t>(args.filter_d), static_cast<int64_t>(args.bot_d)));
     const auto dstart       = static_cast<size_t>(max(int_dstart, 0));
 
     const auto int_hstart   = static_cast<int>(th * args.filter_h_stride) - static_cast<int>(args.filter_h_pad);
-    const auto hend             = static_cast<uint32_t>(min(int_hstart + static_cast<int>(args.filter_h), static_cast<int>(args.bot_h)));
+    /* const */ auto hend             = static_cast<uint32_t>(min(int_hstart + static_cast<int>(args.filter_h), static_cast<int>(args.bot_h)));
     const auto hstart         = static_cast<uint32_t>(max(int_hstart, 0));
 
     const auto int_wstart        = static_cast<int>(tw * args.filter_w_stride) - static_cast<int>(args.filter_w_pad);
-    const auto wend             = static_cast<uint32_t>(min(int_wstart + static_cast<int>(args.filter_w), static_cast<int>(args.bot_w)));
+    /* const */ auto wend             = static_cast<uint32_t>(min(int_wstart + static_cast<int>(args.filter_w), static_cast<int>(args.bot_w)));
     const auto wstart           = static_cast<uint32_t>(max(int_wstart, 0));
 
     size_t top_index = 
@@ -232,32 +132,6 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
             td * args.top_d_stride +            //
             th * args.top_h_stride +            //
             tw * args.top_w_stride;
-
-#if true
-    size_t junk_idx = 64;
-    int bot_idx = 0;
-    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
-    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
-    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
-    junk_ptr[junk_idx++] = NATIVE_CAST(bot_ptr[bot_idx++]);
-    junk_idx += 4 * th;
-    if(nn == 0 && cc == 0 && td == 0 && tw < 8 && th == 0)
-    {
-
-        size_t bot_ncd = static_cast<size_t>(nn * args.bot_n_stride + cc * args.bot_c_stride + dstart * args.bot_d_stride);
-            size_t bot_ncdh = bot_ncd + hstart * args.bot_h_stride;
-                size_t bot_index = bot_ncdh + wstart * args.bot_w_stride;
-
-        junk_ptr[junk_idx++] = top_index;
-        junk_ptr[junk_idx++] = bot_index;
-        junk_ptr[junk_idx++] = dstart;
-        junk_ptr[junk_idx++] = dend;
-        junk_ptr[junk_idx++] = hstart;
-        junk_ptr[junk_idx++] = hend;
-        junk_ptr[junk_idx++] = wstart;
-        junk_ptr[junk_idx++] = wend;
-    }
-#endif
 
 #if MLO_POOLING_OP_ID == MLO_POOLING_OP_AVE
     uint32_t pool_size = (dend - dstart) * (hend - hstart) * (wend - wstart);
@@ -315,35 +189,27 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
 #else // MAX
     if(save_index)
     {
-        index_t res_index = 5150;
+        index_t res_index = saved_index;
 
-        // / Preventing overflow during computation of res_index:
-        // / If Index is shorter than uint, then let's perform computation in 32-bit
-        // / domain and then convert to narrower Index. That would reduce the probability of
-        // / overflow. If Index is wider then 32 bits, then it seems like it is better to
-        // / convert to Index type before multiplication. However this is not actually
-        // / necessary, see \ref multiply_dims_overflow_assumption. Let's always compute in
-        // / 32 bits and then convert.
+        /// Preventing overflow during computation of res_index:
+        /// If Index is shorter than uint, then let's perform computation in 32-bit
+        /// domain and then convert to narrower Index. That would reduce the probability of
+        /// overflow. If Index is wider then 32 bits, then it seems like it is better to
+        /// convert to Index type before multiplication. However this is not actually
+        /// necessary, see \ref multiply_dims_overflow_assumption. Let's always compute in
+        /// 32 bits and then convert.
 
         if(found)
         {
-            if(index_mode == 1) // TEMPCODE RJS
-                res_index = saved_index;
-                // res_index = (index_t)(              //
-                //     nn * args.bot_n_stride          //
-                //     + cc * args.bot_c_stride        //
-                //     + d_save * args.bot_d_stride    //
-                //     + h_save * args.bot_h_stride    //
-                //     + w_save * args.bot_w_stride);
-            else
+            if(index_mode == 0)
                 res_index = (index_t)(                                                    //
-                    ((d_save - td * args.filter_d_stride + args.filter_d_pad) * args.filter_h * args.filter_w) //
-                    + ((h_save - th * args.filter_h_stride + args.filter_h_pad) * args.filter_w)          //
-                    + (w_save - tw * args.filter_w_stride + args.filter_w_pad)                       //
+                    ((d_save - td * args.filter_d_stride + args.filter_d_pad) * args.filter_h * args.filter_w) + //
+                    ((h_save - th * args.filter_h_stride + args.filter_h_pad) * args.filter_w) +         //
+                    (w_save - tw * args.filter_w_stride + args.filter_w_pad)                       //
                 );
         }
 
-        const size_t mask_index = nn * args.mask_n_stride             //
+        const size_t mask_index = nn * args.mask_n_stride               //
                                     + cc * args.mask_c_stride           //
                                     + (size_t)(td * args.mask_d_stride) //
                                     + (size_t)(th * args.mask_h_stride) //
@@ -358,7 +224,6 @@ __device__ void poolingForwardNDNhwcNaive(const TI* __restrict__ bot_ptr,
 extern "C" __global__ void mloPoolingForwardNDNhwcNaive(
                                     const INPUT_TYPE* __restrict__ bot_ptr,
                                     INPUT_TYPE* __restrict__ top_ptr,
-                                    float* __restrict__ junk_ptr,    // TEMPCODE RJS
                                     index_t* __restrict__ mask_ptr,
                                     int save_index,
                                     int index_mode,
@@ -368,7 +233,6 @@ extern "C" __global__ void mloPoolingForwardNDNhwcNaive(
     poolingForwardNDNhwcNaive<INPUT_TYPE>(
         bot_ptr,
         top_ptr,
-        junk_ptr,
         mask_ptr,
         save_index,
         index_mode,

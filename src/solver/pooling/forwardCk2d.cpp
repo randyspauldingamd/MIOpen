@@ -135,7 +135,7 @@ std::size_t sizeof_private_memory(const miopen::pooling::ProblemDescription& pro
 bool PoolingForwardCk2d::IsApplicable(const ExecutionContext& context,
                                     const miopen::pooling::ProblemDescription& problem) const
 {
-    return false;
+    return false;   // TRJS not active yet
     return problem.GetDirection() == miopen::pooling::Direction::Forward &&
            problem.GetXDesc().GetNumDims() == 4 &&
            problem.GetXDesc().GetType() == problem.GetYDesc().GetType() &&

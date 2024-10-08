@@ -148,8 +148,7 @@ struct MIOPEN_EXPORT PoolingDescriptor : miopenPoolingDescriptor
                            Data_t y,
                            bool save_index,
                            Data_t workSpace,
-                           size_t workSpaceSize,
-                           Data_t junk = nullptr) const;  // TEMPCODE RJS
+                           size_t workSpaceSize) const;
 
     miopenStatus_t Backward(Handle& handle,
                             const void* alpha,

@@ -45,7 +45,6 @@ struct FwdInvokeParams : public miopen::InvokeParams
     Data_t y                   = nullptr;
     Data_t workspace           = nullptr;
     std::size_t workspace_size = 0;
-    Data_t junk                   = nullptr;    // TEMPCODE RJS
 
     std::size_t GetWorkspaceSize() const { return workspace_size; }
     Data_t GetWorkspace() const { return workspace; }

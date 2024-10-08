@@ -86,19 +86,6 @@ bool PoolingForwardNaive::IsApplicable(const ExecutionContext&,
         && (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end());
 }
 
-
-#include <iomanip>  // TEMPCODE RJS
-namespace {
-    template<typename T>
-    void printVec(std::string name, const std::vector<T>& vec)
-    {
-         return;
-       std::cout << "Vector Printing: " << std::setw(20) << name << "[" << vec.size() << "]: ";
-        for(auto i : vec)    std::cout << std::setw(8) << i;
-        std::cout << std::endl;
-    }
-}
-
 ConvSolution
 PoolingForwardNaive::GetSolution(const ExecutionContext& context,
                                  const miopen::pooling::ProblemDescription& problem) const
@@ -135,17 +122,6 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
     const auto save_index = problem.SaveIndex();
     const auto index_mode = pooling.GetWorkspaceIndexMode();
     const auto index_type = pooling.GetIndexType();
-
-    // TEMPCODE RJS
-    std::cout << "======================================================================" << std::endl;
-    printVec("bot lengths", bot.GetLengths());
-    printVec("bot strides", bot.GetStrides());
-    printVec("top lengths", top.GetLengths());
-    printVec("top strides", top.GetStrides());
-    printVec("pool lengths", lengths);
-    printVec("pool strides", strides);
-    printVec("pool pads", pads);
-    std::cout << "======================================================================" << std::endl;
 
     /// \anchor multiply_dims_overflow_assumption
     ///
@@ -290,7 +266,7 @@ PoolingForwardNaive::GetSolution(const ExecutionContext& context,
                 filter_w_pad,
                 all_n,
                 all_c,
-                bot_d,  // TEMPCODE RJS: have not broke it
+                bot_d,
                 bot_h,
                 bot_w,
                 bot_n_stride,

@@ -66,6 +66,19 @@ std::ostream& operator<<(std::ostream& os, const KernelInfo& k)
     return os << "} '" << k.comp_options << '\'';
 }
 
+void KernelInfo::ConfigureHip(size_t l0, size_t l1, size_t l2, size_t g0, size_t g1, size_t g2) 
+{
+    l_wk.clear();
+    l_wk.push_back(l0);
+    l_wk.push_back(l1);
+    l_wk.push_back(l2);
+
+    g_wk.clear();
+    g_wk.push_back(g0 * l0);
+    g_wk.push_back(g1 * l1);
+    g_wk.push_back(g2 * l2);
+}
+
 std::vector<Program>
 PrecompileKernels(const Handle& h, const std::vector<KernelInfo>& kernels, bool force_attach_binary)
 {
