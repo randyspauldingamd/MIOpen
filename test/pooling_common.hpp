@@ -255,7 +255,7 @@ struct verify_forward_pooling
               const std::vector<Index>&) const
     {
         std::cout << "Forward ";
-        print(filter, input.desc.IsDefaultLayout());
+        print(filter);
         std::cout << "Input tensor: " << input.desc.ToString() << std::endl;
         std::cout << "Output tensor: " << filter.GetForwardOutputTensor(input.desc).ToString()
                   << std::endl;
@@ -275,6 +275,9 @@ struct verify_backward_pooling
                   bool verify_index) const
     {
         auto dinput = input;
+
+        constexpr int sptl_dim_offset = 2;
+        constexpr int chan_dim_offset = 1;
 
         std::vector<double> din_vec(input.desc.GetElementSpace(), 0.0);
         CHECK(dout.desc == out.desc);
@@ -468,7 +471,7 @@ struct verify_backward_pooling
               bool) const
     {
         std::cout << "Backward ";
-        print(filter, input.desc.IsDefaultLayout());
+        print(filter);
         std::cout << "Input tensor: " << input.desc.ToString() << std::endl;
         std::cout << "Output tensor: " << out.desc.ToString() << std::endl;
     }
@@ -546,7 +549,7 @@ struct pooling_driver : test_driver
             indices);
         auto dout = out.first;
         dout.generate(tensor_elem_gen_integer{2503});
-        verify(verify_backward_pooling<SptDim>{},
+        verify(verify_backward_pooling<SptlDim>{},
                input,
                dout,
                out.first,
