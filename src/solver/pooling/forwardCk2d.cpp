@@ -24,12 +24,11 @@
  *
  *******************************************************************************/
 
-#include <miopen/pooling/solvers.hpp>
-
-#include <miopen/pooling/invoke_params.hpp>
 #include <miopen/datatype.hpp>
-#include <miopen/pooling.hpp>
 #include <miopen/kernel_build_params.hpp>
+#include <miopen/pooling.hpp>
+#include <miopen/pooling/invoke_params.hpp>
+#include <miopen/pooling/solvers.hpp>
 
 namespace miopen {
 

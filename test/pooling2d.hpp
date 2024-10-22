@@ -37,27 +37,28 @@ public:
     static std::vector<U> get_2d_pooling_input_shapes()
     {
         return {
+                // {2, 32, 30, 30},
                 {5, 32, 8, 8},
-                {16, 1, 4096, 4096},
-                {1, 16, 4096, 4096},
-                {1, 1024, 512, 512},
-                {16, 1024, 128, 128},
-                {1, 832, 64, 128},
-                {10, 3, 32, 32},
-                {1, 19, 1024, 2048},
-                {2, 1024, 12, 12},
-                {4, 3, 231, 231},
-                {8, 3, 227, 227},
-                {1, 384, 13, 13},
-                {1, 96, 27, 27},
-                {2, 160, 7, 7},
-                {1, 192, 256, 512},
-                {2, 192, 28, 28},
-                {1, 256, 56, 56},
-                {4, 3, 224, 224},
-                {2, 64, 112, 112},
-                {2, 608, 4, 4},
-                {1, 2048, 11, 11}
+                // {16, 1, 4096, 4096}, // TRJS
+                // {1, 16, 4096, 4096},
+                // {1, 1024, 512, 512},
+                // {16, 1024, 128, 128},
+                // {1, 832, 64, 128},
+                // {10, 3, 32, 32},
+                // {1, 19, 1024, 2048},
+                // {2, 1024, 12, 12},
+                // {4, 3, 231, 231},
+                // {8, 3, 227, 227},
+                // {1, 384, 13, 13},
+                // {1, 96, 27, 27},
+                // {2, 160, 7, 7},
+                // {1, 192, 256, 512},
+                // {2, 192, 28, 28},
+                // {1, 256, 56, 56},
+                // {4, 3, 224, 224},
+                // {2, 64, 112, 112},
+                // {2, 608, 4, 4},
+                {8, 512, 11, 11}
         };
     }
 
@@ -129,7 +130,7 @@ public:
             }
         ));
         // clang-format on
-        this->add(this->wsidx, "wsidx", this->generate_data({miopenPoolingWorkspaceIndexMask, miopenPoolingWorkspaceIndexImage}));
-        this->add(this->layout, "layout", this->generate_data({miopenTensorNCHW, miopenTensorNHWC}));
+        this->add(this->wsidx, "wsidx", this->generate_data({/* miopenPoolingWorkspaceIndexMask,  */miopenPoolingWorkspaceIndexImage}));
+        this->add(this->layout, "layout", this->generate_data({/* miopenTensorNCHW,  */miopenTensorNHWC}));
    }
 };

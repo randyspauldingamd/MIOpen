@@ -614,6 +614,7 @@ inline SolverRegistrar::SolverRegistrar(IdRegistryData& registry)
              miopenConvolutionAlgoImplicitGEMM);
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNaive{}.SolverDbId());
     Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardNDNhwcNaive{}.SolverDbId());
+    Register(registry, ++id, Primitive::Pooling, pooling::PoolingForwardCkNd{}.SolverDbId());
     RegisterWithSolver(registry,
                        ++id,
                        conv::ConvHipImplicitGemmGroupFwdXdlops{},

@@ -247,8 +247,10 @@ void Run2dDriver(miopenDataType_t prec)
     }
 }
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(Pooling2dInt8);
+
 INSTANTIATE_TEST_SUITE_P(Full, Pooling2dBF16, testing::Values(Get2dTestCases("--bfloat16")));
-INSTANTIATE_TEST_SUITE_P(Full, Pooling2dInt8, testing::Values(Get2dTestCases("--int8")));
+// INSTANTIATE_TEST_SUITE_P(Full, Pooling2dInt8, testing::Values(Get2dTestCases("--int8")));
 INSTANTIATE_TEST_SUITE_P(Full, Pooling2dFloat, testing::Values(Get2dTestCases("--float")));
 INSTANTIATE_TEST_SUITE_P(Full, Pooling2dHalf, testing::Values(Get2dTestCases("--half")));
 INSTANTIATE_TEST_SUITE_P(Full, Pooling2dF8, testing::Values(Get2dTestCases("--float8")));

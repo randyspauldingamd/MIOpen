@@ -39,11 +39,11 @@ namespace miopen {
 
 static auto PoolingForwardSolvers()
 {
-    return solver::SolverContainer<solver::pooling::PoolingForward2d,
+    return solver::SolverContainer</* solver::pooling::PoolingForward2d,
                                    solver::pooling::PoolingForwardNd,
-                                   solver::pooling::PoolingForwardNaive,
-                                   solver::pooling::PoolingForwardNDNhwcNaive,
-                                   solver::pooling::PoolingForwardCk2d,
+                                   solver::pooling::PoolingForwardNaive, */
+                                //    solver::pooling::PoolingForwardNDNhwcNaive,   // TRJS no naive
+                                //    solver::pooling::PoolingForwardCk2d,
                                    solver::pooling::PoolingForwardCkNd,
                                    solver::pooling::TransposedPoolingFwd2d,
                                    solver::pooling::TransposedPoolingFwdNd>{};

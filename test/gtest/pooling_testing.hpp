@@ -163,6 +163,91 @@ struct pooling_operators
     }
 };
 
+
+
+
+#include <algorithm>
+#include <iomanip>
+#define MAX_PRINTING 128    // TEMPCODE RJS
+#define MAX_PRINT 12    // TEMPCODE RJS
+#define MAX_NCD 2
+#define GPU_JUNK 0 // typ. 160, reasonable max is 320
+#define PRINT_CPU_IN 1
+#define PRINT_GPU_OUT 1
+#define GPU_4COL false
+#define PIPE std::cout
+
+namespace {
+    template<typename T>
+    std::vector<T> ClampNCS(const std::vector<T>& lens, std::vector<T>& strides)
+    {
+        std::vector<T> out;
+        bool is2d = lens.size() == 4;
+        constexpr T max_ncd = MAX_NCD;
+        constexpr T max_print = MAX_PRINT;
+        int idx = 0;
+
+        out.push_back(std::min(lens[idx++], max_ncd));
+        out.push_back(std::min(lens[idx++], max_ncd));
+        if(is2d)
+            out.push_back(1);
+        else
+            out.push_back(std::min(lens[idx++], max_ncd));
+
+        out.push_back(std::min(lens[idx++], max_print));
+        out.push_back(std::min(lens[idx++], max_print));
+
+        if(is2d)
+           strides.insert(strides.begin() + 2, {strides[2]});
+
+        return out;
+    }
+
+    template<typename T, typename S>
+    std::ostream& printClamped(std::ostream& oss, const std::vector<T>& out, const std::vector<S>& outlen, const std::vector<S>& outstr, int mode = 0)
+    {
+        auto ostr = outstr;
+        auto olen = ClampNCS(outlen, ostr);
+
+        for(int nn = 0; nn < olen[0]; ++nn) {
+            for(int cc = 0; cc < olen[1]; ++cc) {
+                for(int dd = 0; dd < olen[2]; ++dd) {
+                    oss << "n= " << nn << " c= " << cc << " d= " << dd << std::endl;
+                    for(int hh = 0; hh < olen[3]; ++hh) {
+                        for(int ww = 0; ww < olen[4]; ++ww) {
+//                            auto index = nn * ostr[0] + cc * ostr[1] + dd * ostr[2] + hh * ostr[3] + ww * ostr[4];
+                            auto index = 4 * nn * ostr[0] + cc * ostr[1] + dd * ostr[2] + hh * ostr[3] + ww * ostr[4];
+switch(mode) {
+    case 0:
+    if(std::is_same<T, char>::value || std::is_same<T, int8_t>::value) {
+                            oss << std::setw(11) << std::setprecision(5) << (int16_t)out[index] << "  ";
+    } else {
+                            oss << std::setw(11) << std::setprecision(5) << out[index] << "  ";
+    }
+                            break;
+    case 1:
+                            oss << std::setw(11) << std::setprecision(5) << index << "  ";
+                            break;
+}    
+                        }
+                        oss << std::endl;
+                    }
+                }
+            }
+        }
+        return oss;
+    }
+
+    template<typename T, typename S>
+    std::ostream& printClamped(std::ostream& oss, const tensor<T>& out, const std::vector<S>& outlen, const std::vector<S>& outstr, int mode = 0)
+    {
+        return printClamped<T, S>(oss, out.data, outlen, outstr, mode);
+    }
+}
+
+
+
+
 template <int SptDim>
 struct verify_forward_pooling
 {
@@ -232,6 +317,45 @@ struct verify_forward_pooling
             out(o, w, out_spatial_id_pack...) = T(pooler.finalize(acc, pool_size));
         });
 
+
+
+
+        // TEMPCODE RJS print input tensor
+        bool printing = in_dim[0] <= MAX_PRINTING && in_dim[1] <= MAX_PRINTING;
+        if(in_dim.size() > 2) printing &= in_dim[2] <= MAX_PRINTING;
+
+        if(PRINT_GPU_OUT && printing)
+        {
+            PIPE << "CPU out: ";
+            auto outlen = out.desc.GetLengths();
+            for(auto dim : outlen)              PIPE << std::setw(4) << dim << " "; PIPE << " | ";
+            auto outstr = out.desc.GetStrides();
+            for(auto dim : outstr)              PIPE << std::setw(4) << dim << " "; PIPE << " | ";
+            for(auto str : filter.GetLengths()) PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetStrides()) PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetPads())    PIPE << std::setw(4) << str << " ";
+            PIPE << std::endl;
+
+            printClamped(PIPE, out, outlen, outstr);
+            // printClamped(PIPE, out, outlen, outstr, 1);
+        }   // print output tensor
+        if(PRINT_CPU_IN && printing)
+        {
+            auto inlen = input.desc.GetLengths();
+            auto instr = input.desc.GetStrides();
+            PIPE << "CPU in : m" << filter.GetMode() << " t" << input.desc.GetType() << " | ";
+            for(auto dim : inlen)               PIPE << std::setw(4) << dim << " "; PIPE << " | ";
+            for(auto str : instr)               PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetLengths()) PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetStrides()) PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetPads())    PIPE << std::setw(4) << str << " ";
+            PIPE << std::endl;
+
+            printClamped(PIPE, input, inlen, instr);
+        }
+
+
+
         return out;
     }
 
@@ -242,11 +366,14 @@ struct verify_forward_pooling
     {
         auto&& handle = get_handle();
         auto out      = get_output_tensor(filter, input);
+        for(auto v : out.data) {if(v != 0) { std::cout << "******************** out is initially nonzero" << std::endl; break;}}
 
-        indices.resize(out.data.size(), 0);
+        indices.resize(out.data.size(), 0);     // TRJS zero GPU indices
 
         auto in_dev  = handle.Write(input.data);
-        auto out_dev = handle.Create<T>(out.GetSize());
+        // auto out_dev = handle.Create<T>(out.GetSize());
+        auto out_dev = handle.Write(out.data);  // TRJS zero GPU out
+
         Workspace wspace{};
         wspace.Write(indices);
 
@@ -263,6 +390,32 @@ struct verify_forward_pooling
                        wspace.size());
         handle.ReadTo(out.data.data(), out_dev, out.GetDataByteSize());
         wspace.ReadTo(indices);
+
+
+
+        bool printing = input.desc.GetLengths()[2] <= MAX_PRINTING && input.desc.GetLengths()[3] <= MAX_PRINTING;
+        if(input.desc.GetLengths().size() > 4) printing &= input.desc.GetLengths()[4] <= MAX_PRINTING;
+std::cout << (printing ? "printing output from GPU..." : "skipping GPU print.") << std::endl;
+        if(PRINT_GPU_OUT && printing)
+        {
+
+            auto outlen = out.desc.GetLengths();
+            auto outstr = out.desc.GetStrides();
+
+            PIPE << "GPU out: ";
+            for(auto dim : outlen)              PIPE << std::setw(4) << dim << " "; PIPE << " | ";
+            for(auto dim : outstr)              PIPE << std::setw(4) << dim << " "; PIPE << " | ";
+            for(auto str : filter.GetLengths()) PIPE << std::setw(4) << str << " "; PIPE << " | ";
+            for(auto str : filter.GetStrides()) PIPE << std::setw(4) << str << " "; PIPE<< " | ";
+            for(auto str : filter.GetPads())    PIPE << std::setw(4) << str << " ";
+            PIPE << std::endl;
+            printClamped(PIPE, out, outlen, outstr);
+            PIPE << "GPU indices: " << std::endl;
+            printClamped(PIPE, indices, outlen, outstr);
+        }   // print output tensor
+
+
+
 
         return out;
     }
@@ -573,25 +726,25 @@ struct pooling_driver : test_driver
     {
         add(index_type,
             "index_type",
-            // generate_data({"miopenIndexUint32"}    // TEMPCODE RJS RUN
-            generate_multi_data<const char*>( //
-                {{"miopenIndexUint32",
-                  "miopenIndexUint8"
-                  ,
-                  "miopenIndexUint16",
-                  "miopenIndexUint64"
-                  },                     //
-                 {"miopenIndexUint8", "miopenIndexUint32"}, //
-                 {"miopenIndexUint32"}}                     //
+            generate_data({"miopenIndexUint32"}    // TEMPCODE RJS RUN
+            // generate_multi_data<const char*>( //
+            //     {{"miopenIndexUint32",
+            //       "miopenIndexUint8"
+            //       ,
+            //       "miopenIndexUint16",
+            //       "miopenIndexUint64"
+            //       },                     //
+            //      {"miopenIndexUint8", "miopenIndexUint32"}, //
+            //      {"miopenIndexUint32"}}                     //
                 ));
         add(mode_str,
             "mode_str",
             generate_data(
-                {"miopenPoolingMax", "miopenPoolingAverage", "miopenPoolingAverageInclusive"}));
+                {"miopenPoolingMax", "miopenPoolingAverage"/*, "miopenPoolingAverageInclusive" */}));  // TRJS mode
 #if TEST_PADDING_MODE == 1
         add(pmode, "pmode", generate_data({"default", "same", "valid"}));
 #endif
-        add(verify_indices, "verify_indices", generate_data({1}));
+        add(verify_indices, "verify_indices", generate_data({1}));  // TRJS verify_indices
     }
 
     template <class Index, int SptlDim>

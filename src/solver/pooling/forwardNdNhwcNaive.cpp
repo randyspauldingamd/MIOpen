@@ -50,11 +50,20 @@ bool IsPower2(T v)
 }
 #endif
 
+void SetDHW_Nd(uint32_t& d, uint32_t& h, uint32_t& w, bool is2d, const uint32_t d_default, const std::vector<int>& values)
+{
+    uint32_t idx = 0;
+    d        = is2d ? d_default : values[idx++];
+    h        = values[idx++];
+    w        = values[idx++];
+}
+
 } // namespace
 
 bool PoolingForwardNDNhwcNaive::IsApplicable(const ExecutionContext&,
                                        const miopen::pooling::ProblemDescription& problem) const
 {
+    return false; // TRJS pick CK instead
     auto x_type = problem.GetXDesc().GetType();
     auto y_type = problem.GetYDesc().GetType();
     std::vector<miopenDataType_t> types {miopenFloat, miopenHalf, miopenInt8, miopenFloat8, miopenBFloat16}; // 
@@ -89,7 +98,7 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     const auto bot  = problem.GetXDesc();
     const auto top  = problem.GetYDesc();
     const bool is2d = (bot.GetNumDims() == 4);
-    const bool is_transpose = problem.GetXDesc().GetLayout_str()[1] != 'C';
+    const bool is_transpose = problem.GetXDesc().GetLayout_str()[1] != 'C';     // TRJS shouldn't be unneeded--this isn't called without IsApplicable, which catches this
     if(!is_transpose)
     {
         MIOPEN_THROW("Tried to run NHWC solver on NCHW data");
@@ -102,20 +111,9 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     const auto& pads    = pooling.GetPads();
 
     // This also deduces 3D (DHW) parameters from 2D (HW) descriptor.
-    uint32_t idx = 0;
-    args.filter_d        = is2d ? 1 : lengths[idx++];
-    args.filter_h        = lengths[idx++];
-    args.filter_w        = lengths[idx++];
-
-    idx = 0;
-    args.filter_d_stride = is2d ? (strides[0]) : strides[idx++];
-    args.filter_h_stride = strides[idx++];
-    args.filter_w_stride = strides[idx++];
-
-    idx = 0;
-    args.filter_d_pad    = is2d ? 0 : pads[idx++];
-    args.filter_h_pad    = pads[idx++];
-    args.filter_w_pad    = pads[idx++];
+    SetDHW_Nd(args.filter_d, args.filter_h, args.filter_w, is2d, 1, lengths);
+    SetDHW_Nd(args.filter_d_stride, args.filter_h_stride, args.filter_w_stride, is2d, 0, strides);
+    SetDHW_Nd(args.filter_d_pad, args.filter_h_pad, args.filter_w_pad, is2d, 0, pads);
 
     // TODO RJS move pooling_method to shared code
     const int pooling_method = (pooling.GetMode() == miopenPoolingMax) ? MLO_POOLING_OP_MAX
@@ -193,7 +191,7 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
     auto w_  = args.top_w;
     auto c_  = args.all_c;
 
-    // These are hip-style indexes (not OCL)
+    // Note: using hip-style indexes
     uint32_t l1 = 1U;
     uint32_t l2 = 1U;
 
@@ -259,15 +257,6 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
         // * 2: 2D and 3D kernels (optimization)
 
         kernel.ConfigureHip(l0, l1, l2, g0, g1, g2);
-        // KernelInfo uses OCL-style indexes
-        // kernel.l_wk.clear();
-        // kernel.l_wk.push_back(l0);
-        // kernel.l_wk.push_back(l1);
-        // kernel.l_wk.push_back(l2);
-        // kernel.g_wk.clear();
-        // kernel.g_wk.push_back(g0 * l0);
-        // kernel.g_wk.push_back(g1 * l1);
-        // kernel.g_wk.push_back(g2 * l2);
         result.construction_params.push_back(kernel);
     }
 
@@ -283,16 +272,6 @@ PoolingForwardNDNhwcNaive::GetSolution(const ExecutionContext& context,
                 save_index,
                 index_mode,
                 args
-                // args.filter_d, args.filter_h, args.filter_w,
-                // args.filter_d_stride, args.filter_h_stride, args.filter_w_stride,
-                // args.filter_d_pad, args.filter_h_pad, args.filter_w_pad,
-                // args.all_n,
-                // args.all_c,
-                // args.bot_d, args.bot_h, args.bot_w,
-                // args.bot_n_stride, args.bot_c_stride, args.bot_d_stride, args.bot_h_stride, args.bot_w_stride,
-                // args.top_d, args.top_h, args.top_w,
-                // args.top_n_stride, args.top_c_stride, args.top_d_stride, args.top_h_stride, args.top_w_stride,
-                // args.mask_n_stride, args.mask_c_stride, args.mask_d_stride, args.mask_h_stride, args.mask_w_stride
             );
         };
     };
