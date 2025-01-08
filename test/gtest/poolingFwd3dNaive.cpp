@@ -60,8 +60,8 @@ struct layout_data
     {
         std::vector<int> strides;
         std::string layout_default = miopen::tensor_layout_get_default(dims + 2);
-        std::string layout_string  = miopen::TensorDescriptor::GetLayoutStr(tensor_layout);
-
+        std::string layout_string  = miopen::TensorDescriptor::LayoutEnumToStr(tensor_layout);
+ // TRJS
 std::cout << "get_strides: dims=" << dims << " lens=" << lens.size() << " " << layout_default << " " << layout_string << std::endl;
         miopen::tensor_layout_to_strides(lens, layout_default, layout_string, strides);
 
