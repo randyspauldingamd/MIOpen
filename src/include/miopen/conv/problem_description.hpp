@@ -102,45 +102,15 @@ constexpr TElement GetWofCHWN(const std::vector<TElement>& data)
     return std::get<2>(GetCHWN(data));
 }
 
-template <class TElement>
-constexpr TElement GetN5(unsigned spatial_dims, const std::vector<TElement>& data)
-{
-    return std::get<0>(GetNCDHW(spatial_dims, data));
-}
-
-template <class TElement>
-constexpr TElement GetC5(unsigned spatial_dims, const std::vector<TElement>& data)
-{
-    return std::get<1>(GetNCDHW(spatial_dims, data));
-}
-
-template <class TElement>
-constexpr TElement GetD5(unsigned spatial_dims, const std::vector<TElement>& data)
-{
-    return std::get<2>(GetNCDHW(spatial_dims, data));
-}
-
-template <class TElement>
-constexpr TElement GetH5(unsigned spatial_dims, const std::vector<TElement>& data)
-{
-    return std::get<3>(GetNCDHW(spatial_dims, data));
-}
-
-template <class TElement>
-constexpr TElement GetW5(unsigned spatial_dims, const std::vector<TElement>& data)
-{
-    return std::get<4>(GetNCDHW(spatial_dims, data));
-}
-
 namespace conv {
 
 MIOPEN_INTERNALS_EXPORT miopenAlphaBetaCase_t ClassifyAlphaBeta(const Scalar& alpha,
                                                                 const Scalar& beta);
 
-struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBase
 #if MIOPEN_ENABLE_SQLITE
-    ,
-                                                    SQLiteSerializable<ProblemDescription>
+struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBase
+#else
+struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBase, SQLiteSerializable<ProblemDescription>
 #endif
 {
     ProblemDescription() = default;
@@ -220,14 +190,14 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBas
     std::size_t GetWeightsDepth() const { return GetD5(GetSpatialDims(), weights.GetLengths()); }
     std::size_t GetWeightsHeight() const
     {
-        if(weights.GetLayout_str() == "CHWNc")
+        if(weights_layout == "CHWNc")
             return GetHofCHWN(weights.GetLengths());
         else
             return GetH5(GetSpatialDims(), weights.GetLengths());
     }
     std::size_t GetWeightsWidth() const
     {
-        if(weights.GetLayout_str() == "CHWNc")
+        if(weights_layout == "CHWNc")
             return GetWofCHWN(weights.GetLengths());
         else
             return GetW5(GetSpatialDims(), weights.GetLengths());
@@ -305,7 +275,8 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBas
     bool IsInt8() const
     {
         return GetInDataType() == miopenInt8 && GetWeightsDataType() == miopenInt8 &&
-               (GetOutDataType() == miopenInt32 || GetOutDataType() == miopenFloat);
+               (GetOutDataType() == miopenInt32 || GetOutDataType() == miopenInt8 ||
+                GetOutDataType() == miopenFloat);
     }
     bool IsFp8() const
     {
@@ -387,10 +358,6 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBas
         return os;
     }
 
-#if MIOPEN_ENABLE_SQLITE
-    static std::string table_name() { return "config"; }
-#endif
-
     template <class Self>
     static void Visit(Self&& self, std::function<void(int64_t, std::string)> f)
     {
@@ -439,6 +406,17 @@ struct MIOPEN_INTERNALS_EXPORT ProblemDescription : ProblemDescriptionWeightsBas
     void SetupFloats(ExecutionContext& ctx) const;
 
 private:
+<<<<<<< HEAD
+=======
+    std::string ComputeLayout(const TensorDescriptor& td) const;
+    std::string ComputeInLayout() const;
+    std::string ComputeOutLayout() const;
+    std::string ComputeWeightsLayout() const;
+
+    TensorDescriptor in;
+    TensorDescriptor weights;
+    TensorDescriptor out;
+>>>>>>> develop
     ConvolutionDescriptor conv;
     Direction direction                   = Direction::Forward;
     int bias                              = 0;

@@ -26,6 +26,7 @@
 
 #include <miopen/datatype.hpp>
 #include <miopen/kernel_build_params.hpp>
+#include <miopen/mlo_internal.hpp>
 #include <miopen/pooling.hpp>
 #include <miopen/pooling/invoke_params.hpp>
 #include <miopen/pooling/solvers.hpp>
@@ -75,15 +76,20 @@ bool PoolingForwardNaive::IsApplicable(const ExecutionContext&,
     auto mode = problem.GetPooling().GetMode();
     std::vector<miopenPoolingMode_t> modes {miopenPoolingMax, miopenPoolingAverage, miopenPoolingAverageInclusive};
 
+    auto dims     = problem.GetXDesc().GetNumDims();
     auto x_layout = problem.GetXDesc().GetLayout_str();
     auto y_layout = problem.GetYDesc().GetLayout_str();
-    std::vector<std::string> layouts {"NCHW", "NCDHW"};
+    std::vector<std::string> layouts2d {"NCHW"};
+    std::vector<std::string> layouts3d {"NCDHW"};
 
-    return (problem.GetDirection() == miopen::pooling::Direction::Forward)          //
-        && (x_type == y_type)                                                       //
-        && (std::find(types.cbegin(), types.cend(), x_type) != types.cend())        //
-        && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())          //
-        && (std::find(layouts.cbegin(), layouts.cend(), x_layout) != layouts.end());
+    return (problem.GetDirection() == miopen::pooling::Direction::Forward)                              //
+        && (x_type == y_type)                                                                           //
+        && (x_layout == y_layout)                                                                       //
+        && (std::find(types.cbegin(), types.cend(), x_type) != types.cend())                            //
+        && (std::find(modes.cbegin(), modes.cend(), mode) != modes.cend())                              //
+        && (dims != 4 || std::find(layouts2d.cbegin(), layouts2d.cend(), x_layout) != layouts2d.end())  //
+        && (dims != 5 || std::find(layouts3d.cbegin(), layouts3d.cend(), x_layout) != layouts3d.end())  //
+    ;
 }
 
 ConvSolution
