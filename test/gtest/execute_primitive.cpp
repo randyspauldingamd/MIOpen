@@ -235,9 +235,9 @@ auto CallExecutePrimitive(const miopen::ExecutionContext& ctx) -> TestResults
 
 TEST(CPU_ExecutePrimitive_NONE, NoParams)
 {
-    using untuned_asics = Gpu::gfx950;
+    constexpr auto untuned_asics = Gpu::gfx950;
     using d_mask = disabled<untuned_asics>;
-    using e_mask = enabled<Gpu::All & ~untuned_asics>;
+    using e_mask = enabled<Gpu::None>; // reverts to default
     if(!::IsTestSupportedForDevMask<d_mask, e_mask>())
     {
         GTEST_SKIP();
