@@ -24,6 +24,7 @@
  *
  *******************************************************************************/
 
+#include <gtest/gtest_common.hpp>
 #include <miopen/filesystem.hpp>
 #include <miopen/execution_context.hpp>
 #include <miopen/find_solution.hpp>
@@ -234,6 +235,14 @@ auto CallExecutePrimitive(const miopen::ExecutionContext& ctx) -> TestResults
 
 TEST(CPU_ExecutePrimitive_NONE, NoParams)
 {
+    using untuned_asics = Gpu::gfx950;
+    using d_mask = disabled<untuned_asics>;
+    using e_mask = enabled<Gpu::All & ~untuned_asics>;
+    if(!::IsTestSupportedForDevMask<d_mask, e_mask>())
+    {
+        GTEST_SKIP();
+    }
+
     auto ctx = miopen::ExecutionContext{&get_handle()};
 
     auto results = CallExecutePrimitive(ctx);
