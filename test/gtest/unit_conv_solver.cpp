@@ -37,12 +37,6 @@
 
 #include "../workspace.hpp"
 
-// TRJS
-#include <strstream>
-#include <miopen/env.hpp>
-MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_RANGE_FACTORX10)
-
-
 MIOPEN_LIB_ENV_VAR(MIOPEN_DEBUG_ENABLE_DEPRECATED_SOLVERS)
 
 namespace miopen {
