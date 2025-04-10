@@ -9,6 +9,9 @@
 
 MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_DEBUG_DRIVER_PRNG_SEED, 12345678)
 
+// TRJS
+MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_RANGE_FACTORX10, 10)
+
 namespace env = miopen::env;
 
 namespace prng {
@@ -97,7 +100,22 @@ template <typename T>
 inline T gen_A_to_B(T A, T B)
 {
     assert(B > A);
-    return gen_0_to_B(B - A) + A;
+    if constexpr(std::is_integral_v<T>)
+    {
+        return gen_0_to_B(B - A) + A;
+    }
+    // TRJS
+    float range_factor = 0.1 * env::value(MIOPEN_RANGE_FACTORX10);
+
+    float range = static_cast<float>(B - A);
+    float eps = range_factor * range * static_cast<float>(std::numeric_limits<T>::epsilon());
+    float x = gen_canonical<float>() * range + A;
+    while(fabs(x) < eps) x = gen_canonical<float>() * range + A;
+    T y = static_cast<T>(x);
+    if(y < A) y = A;
+    if(y > B) y = B;
+
+    return y;
 }
 
 template <typename T>

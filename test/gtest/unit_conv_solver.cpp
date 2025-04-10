@@ -37,6 +37,12 @@
 
 #include "../workspace.hpp"
 
+// TRJS
+#include <strstream>
+#include <miopen/env.hpp>
+MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_RANGE_FACTORX10)
+
+
 MIOPEN_LIB_ENV_VAR(MIOPEN_DEBUG_ENABLE_DEPRECATED_SOLVERS)
 
 namespace miopen {
@@ -349,6 +355,37 @@ double GetThreshold(miopenConvAlgorithm_t algo,
     return threshold;
 }
 
+// TRJS
+template <typename T>
+void CompareData(std::vector<T>& prev_data, const std::vector<T>& data, std::string preamble)
+{
+    size_t diffs = 0;
+    int first_diff = -1;
+    for(int i = 0; i < data.size(); ++i)
+    {
+        if(fabs(1 - data[i] / prev_data[i]) > 1E-7) {
+            ++diffs;
+            if(first_diff == -1) first_diff = i;
+        }
+    }
+
+    std::stringstream diff_str;
+    if(diffs > 0) {
+        diff_str << std::endl << "first diff = " << first_diff;
+    first_diff = ((first_diff + 15) / 16) * 16;
+    } else {
+        diff_str << std::endl << "no diffs in dataset.";
+    }
+    diff_str << " Printing from " << first_diff << std::endl;
+    for(int i = first_diff; i < first_diff + 16; ++i) diff_str << std::setw(16) << std::setprecision(9) << prev_data[i];
+    diff_str << std::endl;
+    for(int i = first_diff; i < first_diff + 16; ++i) diff_str << std::setw(16) << std::setprecision(9) << data[i];
+    for(int i = first_diff; i < first_diff + 16; ++i) { auto prev = prev_data[i]; if(prev == 0.0) prev = data[i]; diff_str << std::setw(16) << std::setprecision(9) << 1 - data[i] / prev; }
+
+    std::ofstream compare_out(preamble + "_compare.txt");
+    compare_out << preamble << " : " << diffs << " diffs out of " << data.size() << " (" << (100.0 * diffs / data.size()) << "%)" << diff_str.str().c_str() << std::endl;
+}
+
 template <typename T, typename Tref>
 void VerifyData(const std::vector<T>& data,
                 const std::vector<Tref>& ref_data,
@@ -380,9 +417,32 @@ void VerifyData(const std::vector<T>& data,
     }
     else
     {
+        // TRJS
+        const auto datasize = data.size() * sizeof(T);
+        const auto refdatasize = ref_data.size() * sizeof(Tref);
+        if (std::filesystem::exists("data.bin")) {
+            std::vector<T> prev_data;
+            prev_data.resize(datasize);
+            std::ifstream data_ifs("data.bin", std::ios::binary);
+            data_ifs.read((char*)prev_data.data(), datasize);
+            CompareData<T>(prev_data, data, "data");
+
+            std::vector<Tref> prev_ref_data;
+            prev_ref_data.resize(refdatasize);
+            std::ifstream ref_data_ifs("ref_data.bin", std::ios::binary);
+            ref_data_ifs.read((char*)prev_ref_data.data(), refdatasize);
+            CompareData<Tref>(prev_ref_data, ref_data, "ref_data");
+        }
+
+        std::ofstream data_out("data.bin", std::ios::binary);
+        data_out.write((const char*)data.data(), datasize);
+
+        std::ofstream ref_data_out("ref_data.bin", std::ios::binary);
+        ref_data_out.write((const char*)ref_data.data(), refdatasize);
+
         const auto error       = miopen::rms_range(ref_data, data);
         const double threshold = GetThreshold<T>(algo, direction, tolerances);
-        ASSERT_LT(error, threshold) << "Error beyond tolerance";
+        ASSERT_LT(error, threshold) << "Error beyond tolerance in " << __FILE__;
         // std::cout << "error: " << error << " threshold: " << threshold << std::endl;
     }
 }
@@ -417,7 +477,37 @@ void RunSolverFwd(const miopen::solver::conv::ConvSolverInterface& solv,
     auto output = tensor<Tout>{output_desc};
 
     input.generate(GenConvData<Tin, Tout>{weights.desc.GetLengths()});
+
+    // TRJS
+    {
+    std::ofstream input_out("input.txt");
+    Tin in_max = std::numeric_limits<Tin>::min();
+    Tin in_min = std::numeric_limits<Tin>::max();
+    for(auto v : input) {
+        float fv = fabs(v);
+        if(fv > in_max) in_max = fv;
+        if(fv < in_min) in_min = fv;
+    }
+    input_out << "input max mag: " << in_max << "  min mag: " << in_min << "  scale: " << in_max / in_min << std::endl;
+    for(auto v : input) input_out << v << "  ";
+    input_out << std::endl;
+    }
+
     weights.generate(GenConvData<Twei, Tout>{weights.desc.GetLengths()});
+    // TRJS
+    {
+    std::ofstream weights_out("weights.txt");
+    Twei wei_max = std::numeric_limits<Twei>::min();
+    Twei wei_min = std::numeric_limits<Twei>::max();
+    for(auto v : weights) {
+        float fv = fabs(v);
+        if(fv > wei_max) wei_max = fv;
+        if(fv < wei_min) wei_min = fv;
+    }
+    weights_out << "weights max mag: " << wei_max << "  min mag: " << wei_min << "  scale: " << wei_max / wei_min << std::endl;
+    for(auto v : weights) weights_out << v << "  ";
+    weights_out << std::endl;
+    }
     std::fill(output.begin(), output.end(), Tout());
 
     auto&& handle = get_handle();
@@ -530,7 +620,37 @@ void RunSolverBwd(const miopen::solver::conv::ConvSolverInterface& solv,
     auto output = tensor<Tout>{output_desc};
 
     output.generate(GenConvData<Tout, Tin>{weights.desc.GetLengths()});
+    // TRJS
+    {
+    std::ofstream out_out("out.txt");
+    Tin out_max = std::numeric_limits<Tout>::min();
+    Tin out_min = std::numeric_limits<Tout>::max();
+    for(auto v : output) {
+        float fv = fabs(v);
+        if(fv > out_max) out_max = fv;
+        if(fv < out_min) out_min = fv;
+    }
+    out_out << "output max mag: " << out_max << "  min mag: " << out_min << "  scale: " << out_max / out_min << std::endl;
+    for(auto v : output) out_out << (float)v << "  ";
+    out_out << std::endl;
+    }
+
     weights.generate(GenConvData<Twei, Tin>{weights.desc.GetLengths()});
+    // TRJS
+    {
+    std::ofstream weights_out("weights.txt");
+    Twei wei_max = std::numeric_limits<Twei>::min();
+    Twei wei_min = std::numeric_limits<Twei>::max();
+    for(auto v : weights) {
+        float fv = fabs(v);
+        if(fv > wei_max) wei_max = fv;
+        if(fv < wei_min) wei_min = fv;
+    }
+    weights_out << "weights max mag: " << wei_max << "  min mag: " << wei_min << "  scale: " << wei_max / wei_min << std::endl;
+    for(auto v : weights) weights_out << v << "  ";
+    weights_out << std::endl;
+    }
+
     std::fill(input.begin(), input.end(), Tin());
 
     auto&& handle = get_handle();
@@ -643,7 +763,46 @@ void RunSolverWrw(const miopen::solver::conv::ConvSolverInterface& solv,
     auto output = tensor<Tout>{output_desc};
 
     input.generate(GenConvData<Tin, Twei>{output_desc.GetLengths()});
+
+    // TRJS
+    float range_factor = 0.1 * env::value(MIOPEN_RANGE_FACTORX10);
+
+    {
+    std::ofstream input_out("input.txt");
+    Tin in_max = std::numeric_limits<Tin>::min();
+    Tin in_min = std::numeric_limits<Tin>::max();
+    for(auto v : input) {
+        float fv = fabs(v);
+        if(fv > in_max) in_max = fv;
+        if(fv < in_min) in_min = fv;
+    }
+    input_out << "input max mag: " << in_max << "  min mag: " << in_min << "  scale: " << in_max / in_min << 
+        "  eps: " << range_factor * in_max * static_cast<float>(std::numeric_limits<Tin>::epsilon())
+         << std::endl;
+    for(auto v : input) {
+        input_out << v << "  ";
+    }
+    input_out << std::endl;
+    }
+
     output.generate(GenConvData<Tout, Twei>{output_desc.GetLengths()});
+    // TRJS
+    {
+    std::ofstream out_out("output.txt");
+    Tout out_max = std::numeric_limits<Tout>::min();
+    Tout out_min = std::numeric_limits<Tout>::max();
+    for(auto v : output) {
+        float fv = fabs(v);
+        if(fv > out_max) out_max = fv;
+        if(fv < out_min) out_min = fv;
+    }
+    out_out << "output max mag: " << out_max << "  min mag: " << out_min << "  scale: " << out_max / out_min << 
+        "  eps: " << range_factor * out_max * static_cast<float>(std::numeric_limits<Tout>::epsilon())
+    << std::endl;
+    for(auto v : output) out_out << v << "  ";
+    out_out << std::endl;
+    }
+
     std::fill(weights.begin(), weights.end(), Twei());
 
     auto&& handle = get_handle();
