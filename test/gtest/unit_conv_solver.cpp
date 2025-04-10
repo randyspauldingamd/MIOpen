@@ -760,6 +760,7 @@ void RunSolverWrw(const miopen::solver::conv::ConvSolverInterface& solv,
 
     // TRJS
     float range_factor = 0.1 * env::value(MIOPEN_RANGE_FACTORX10);
+    if(range_factor == 0.0) range_factor = 1.0;
 
     {
     std::ofstream input_out("input.txt");

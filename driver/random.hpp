@@ -10,7 +10,7 @@
 MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_DEBUG_DRIVER_PRNG_SEED, 12345678)
 
 // TRJS
-MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_RANGE_FACTORX10, 10)
+MIOPEN_DECLARE_ENV_VAR_UINT64(MIOPEN_RANGE_FACTORX10)
 
 namespace env = miopen::env;
 
@@ -106,6 +106,7 @@ inline T gen_A_to_B(T A, T B)
     }
     // TRJS
     float range_factor = 0.1 * env::value(MIOPEN_RANGE_FACTORX10);
+    if(range_factor == 0.0) range_factor = 1.0;
 
     float range = static_cast<float>(B - A);
     float eps = range_factor * range * static_cast<float>(std::numeric_limits<T>::epsilon());
