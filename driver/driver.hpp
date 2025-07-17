@@ -395,6 +395,18 @@ inline void PadBufferSize(size_t& sz, int datatype_sz)
     exit(e); // NOLINT (concurrency-mt-unsafe)
 }
 
+inline bool CheckBaseArgPerfMode(std::string& arg)
+{
+    bool enable_perf = arg.find("perf_") == 0;
+
+    if(enable_perf)
+    {
+        arg = arg.substr(5);
+    }
+
+    return enable_perf;
+}
+
 inline std::string ParseBaseArg(int argc, char* argv[])
 {
     if(argc < 2)
@@ -404,6 +416,7 @@ inline std::string ParseBaseArg(int argc, char* argv[])
     }
 
     std::string arg = argv[1];
+    (void)CheckBaseArgPerfMode(arg);
 
     // List of valid base arguments
     static const std::vector<std::string> valid_args = {"conv",
@@ -506,7 +519,7 @@ inline std::string ParseBaseArg(int argc, char* argv[])
     else if(arg == "-h" || arg == "--help" || arg == "-?")
         Usage(EXIT_SUCCESS);
     else
-        return arg;
+        return argv[1];
 }
 
 class Driver

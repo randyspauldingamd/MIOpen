@@ -47,9 +47,11 @@ int main(int argc, char* argv[])
         exit(0); // NOLINT (concurrency-mt-unsafe)
     }
 
+    bool enable_perf = CheckBaseArgPerfMode(base_arg);
+
     // show command
-    std::cout << "MIOpenDriver";
-    for(int i = 1; i < argc; i++)
+    std::cout << "MIOpenDriver " << base_arg;
+    for(int i = 2; i < argc; i++)
         std::cout << " " << argv[i];
     std::cout << std::endl;
 
@@ -81,7 +83,7 @@ int main(int argc, char* argv[])
         return rc;
     }
 
-    if (drv->GetInputFlags().GetValueInt("time") == 1)
+    if(enable_perf)
     {
         // Print system information for ROCmPerf analysis.
         // The ROCmPerf is a performance analysis tool based on MIOpenDirver logs.
