@@ -91,6 +91,7 @@ int main(int argc, char* argv[])
         miopenGetVersion(&major, &minor, &patch);
         RocmPerf::SysInfo sysInfo(major, minor, patch);
         sysInfo.ShowSysInfo();
+        miopenEnableProfiling(drv->GetHandle(), true);
     }
 
     int fargval =
